@@ -5,47 +5,112 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from openai import OpenAI
-# 移除 Google AI SDK 的匯入，解決 ModuleNotFoundError
-# import google.generativeai as genai
+# import google.generativeai as genai # 保持註釋，解決部署問題
+
+# ==================== 🛠️ 自訂 CSS 樣式 (終極日雜風格) ====================
+custom_css = """
+<style>
+/* 隱藏 Streamlit 頁腳和菜單按鈕 */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* 全局背景色與字體：柔和的米白和深灰 */
+body, .main, .st-emotion-cache-1dp6dkb {
+    background-color: #fdfdfd; /* 極淺米白 */
+    color: #5A5A5A; /* 柔和深灰 */
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+}
+
+/* 標題調整：降低視覺重量，強調簡潔 */
+.st-emotion-cache-10trblm {
+    color: #4A4A4A; 
+    font-weight: 400; /* 更纖細 */
+    border-bottom: 1px solid #E5E5E5; /* 極細下劃線 */
+    padding-bottom: 5px;
+    margin-bottom: 15px;
+}
+
+/* 側邊欄調整 */
+.st-emotion-cache-vk3ypz {
+    background-color: #f7f7f7; /* 淺灰色側邊欄 */
+    border-right: 1px solid #E0E0E0;
+    padding-top: 1.5rem; /* 增加頂部留白 */
+}
+
+/* 輸入框/選擇框的樣式：圓潤且柔和的邊框 */
+.st-emotion-cache-1cypcdb, .st-emotion-cache-1wmy99i { /* 涵蓋多種輸入元件 */
+    border-radius: 8px; /* 柔和圓角 */
+    border: 1px solid #D9D9D9; /* 淺色邊框 */
+    box-shadow: none !important; /* 移除預設陰影 */
+    background-color: white;
+}
+
+/* 調整主要的 Metric 區塊 (卡片風格) */
+.st-emotion-cache-1cypcdb {
+    border: 1px solid #EBEBEB; /* 更淺、更自然感的邊框 */
+    border-radius: 12px;
+    padding: 15px;
+    background-color: #fffffe; 
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.02); /* 極輕微、分散的陰影 */
+}
+
+/* Metric 的指標文字顏色 (日雜強調色: 淺棕色/大地色) */
+.css-1r6rthg {
+    color: #9E8974 !important; /* 更深的柔和棕色 */
+    font-weight: 600;
+    font-size: 1.6rem !important;
+}
+
+/* 按鈕樣式 ( primary 按鈕使用強調色) */
+.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"] {
+    background-color: #B0A595; 
+    color: white;
+    border-radius: 8px;
+    border: none;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"]:hover {
+    background-color: #917C64; /* 懸停時略深 */
+}
+
+/* 資訊/警告框的樣式調整，使其更柔和 */
+[data-testid="stAlert"] {
+    border-left: 5px solid #EBD5D5; /* 警告色柔和化 */
+    background-color: #FEFCFB;
+    color: #5A5A5A;
+    border-radius: 8px;
+}
+</style>
+"""
 
 # ==================== 頁面配置 ====================
-st.set_page_config(page_title="五線譜 + 樂活通道分析", layout="wide")
+st.set_page_config(page_title="五線譜 + 樂活通道分析")
 st.title("五線譜 + 樂活通道 分析系統")
+
+# 注入自訂 CSS
+st.markdown(custom_css, unsafe_allow_html=True)
+
 
 # ==================== Sidebar 設定 ====================
 st.sidebar.header("⚙️ 參數設定")
 
-# 股票代號輸入欄位
 stock_input = st.sidebar.text_input("股票代號", value="00675L", help="台股請輸入代號,系統會自動加上.TW或.TWO")
 
-# 移除原始的簡單 if/else 判斷，由新的下載函數處理備援邏輯
-# if stock_input and not ("." in stock_input):
-#     stock_symbol = f"{stock_input}.TW"
-# else:
-#     stock_symbol = stock_input
+# 🛠️ 修正 1: 移除殘留的股票代號處理邏輯（確保不會與新函數衝突）
 
-# 移除 Gemini 選項，只保留 ChatGPT
 ai_model = st.sidebar.selectbox("AI 模型選擇", ["ChatGPT (OpenAI)"])
 
-# 💡 優化 2: API Key 安全處理 - 優先從 Streamlit Secrets 讀取
-# 預期在 Streamlit Secrets 中配置為：
-# [external_api]
-# openai_api_key = "..."
-# gemini_api_key = "..."
-
-# 嘗試從 Secrets 讀取 Key
+# 💡 API Key 安全處理 (維持不變)
 api_key = None
 try:
-    # 簡化 Key 讀取邏輯，只針對 OpenAI
     api_key = st.secrets["external_api"]["openai_api_key"]
 except (KeyError, AttributeError):
-    # 如果 Secrets 中沒有配置，則允許用戶通過側邊欄輸入 (主要用於本地測試或臨時輸入)
     pass
 
 st.sidebar.markdown("### 🔑 API Key 配置")
 if not api_key:
     st.sidebar.warning("⚠️ Secrets 未配置。請輸入 Key。")
-    # 簡化 Key 輸入邏輯，只針對 OpenAI
     api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 else:
     st.sidebar.success("✅ API Key 已從 Secrets 安全載入。")
@@ -116,7 +181,7 @@ def detect_rsi_divergence(price, rsi, window=20):
     divergence = price_new_high & (~rsi_new_high)
     return divergence
 
-# ==================== 🛠️ 數據下載與備援函數 (修正區) ====================
+# ==================== 🛠️ 數據下載與備援函數 (核心邏輯) ====================
 
 @st.cache_data(ttl=3600)
 def get_stock_info(symbol):
@@ -129,7 +194,6 @@ def get_stock_info(symbol):
     except:
         return symbol, symbol
 
-# 替換舊的 load_stock_data 函數
 @st.cache_data(ttl=3600) 
 def download_stock_data_with_fallback(stock_input, days):
     """
@@ -139,7 +203,6 @@ def download_stock_data_with_fallback(stock_input, days):
     start_date = end_date - timedelta(days=days + 500)
     normalized_input = stock_input.strip().upper()
     
-    # 潛在的代號列表：如果用戶沒有輸入後綴，則嘗試 .TW 和 .TWO
     if "." in normalized_input:
         symbol_attempts = [normalized_input]
     else:
@@ -149,8 +212,9 @@ def download_stock_data_with_fallback(stock_input, days):
     stock_data = None
     
     for symbol in symbol_attempts:
-        if symbol == f"{normalized_input}.TWO" and symbol != normalized_input:
-             st.warning(f"❌ {symbol_attempts[0]} 下載失敗，嘗試使用 {symbol}...")
+        # 🛠️ 修正 2: 僅在嘗試 .TWO 時顯示警告
+        if symbol.endswith(".TWO"):
+             st.warning(f"❌ {normalized_input}.TW 下載失敗，嘗試使用 {symbol}...")
         
         data = yf.download(symbol, start=start_date, end=end_date, progress=False)
         
@@ -160,18 +224,18 @@ def download_stock_data_with_fallback(stock_input, days):
             break
 
     if stock_data is None:
-        return pd.DataFrame(), None, normalized_input # 返回空數據和原始輸入
+        return pd.DataFrame(), None, normalized_input
     
     if isinstance(stock_data.columns, pd.MultiIndex):
         stock_data.columns = stock_data.columns.get_level_values(0)
     
-    stock_name, _ = get_stock_info(final_symbol) # 獲取真實名稱
+    stock_name, _ = get_stock_info(final_symbol)
         
     return stock_data, stock_name, final_symbol
 
 # ==================== 主要分析邏輯 (修正區) ====================
 if analyze_button:
-    if not stock_input: # 使用 stock_input 檢查是否為空
+    if not stock_input:
         st.error("❌ 請輸入股票代號")
     elif not api_key:
         st.error("❌ 請輸入或配置 API Key")
@@ -179,14 +243,13 @@ if analyze_button:
         try:
             with st.spinner("📥 下載股票資料中..."):
                 
-                # 呼叫新的健壯下載函數 (替換舊的 load_stock_data)
                 stock_data, stock_name, stock_symbol_actual = download_stock_data_with_fallback(stock_input, days)
                 
                 if stock_data.empty or stock_symbol_actual is None:
-                    st.error(f"❌ 無法取得 {stock_input.upper()} 的資料，請檢查代號是否正確。")
+                    # 🛠️ 修正 3: 只在最終失敗時顯示一個錯誤訊息
+                    st.error(f"❌ 嚴重錯誤：無法取得 {stock_input.upper()} 的資料，請檢查代號是否正確。")
                     st.stop()
                 
-                # 只保留需要分析的區間數據（用於五線譜計算）
                 regression_data = stock_data.tail(days).copy()
                 regression_data = regression_data.dropna()
                 
@@ -220,30 +283,24 @@ if analyze_button:
             
             # ==================== C. 技術指標計算 (保持不變) ====================
             with st.spinner("🔧 計算技術指標 (RSI, MACD, KD)..."):
-                # RSI (使用14)
                 regression_data['RSI'] = calculate_rsi(regression_data['Close'], 14)
                 
-                # MACD
                 macd, signal, hist = calculate_macd(regression_data['Close'])
                 regression_data['MACD'] = macd
                 regression_data['MACD_Signal'] = signal
                 regression_data['MACD_Hist'] = hist
                 
-                # KD
                 k, d = calculate_kd(regression_data['High'], regression_data['Low'], regression_data['Close'])
                 regression_data['K'] = k
                 regression_data['D'] = d
                 
-                # 均線
                 regression_data['MA5'] = regression_data['Close'].rolling(5).mean()
                 regression_data['MA10'] = regression_data['Close'].rolling(10).mean()
                 regression_data['MA20'] = regression_data['Close'].rolling(20).mean()
                 
-                # 成交量均線
                 regression_data['Volume_MA5'] = regression_data['Volume'].rolling(5).mean()
                 regression_data['Volume_Ratio'] = regression_data['Volume'] / regression_data['Volume_MA5']
                 
-                # RSI 背離檢測
                 regression_data['RSI_Divergence'] = detect_rsi_divergence(regression_data['Close'], regression_data['RSI'])
             
             # ==================== D. 買賣訊號判斷 (保持不變) ====================
@@ -254,21 +311,17 @@ if analyze_button:
                     st.error("❌ 資料不足")
                     st.stop()
                 
-                # 計算當前狀態
                 current = valid_data.iloc[-1]
                 previous = valid_data.iloc[-2] if len(valid_data) > 1 else current
                 current_price = float(current['Close'])
                 current_tl = float(current['TL'])
                 current_ma20w = float(current['MA20W'])
                 
-                # 計算趨勢方向（提前定義 slope_dir）
                 slope_dir = "上升" if slope > 0 else "下降"
                 
-                # 計算五線譜位置
                 deviation = current_price - current_tl
                 sd_level = deviation / sd
                 
-                # 判斷五線譜區域
                 if sd_level >= 2:
                     fiveline_zone = "極度及樂觀 (+2SD以上)"
                 elif sd_level >= 1:
@@ -323,13 +376,17 @@ if analyze_button:
                     action = "⚪ **觀望**"
                     action_detail = "暫無明確訊號"
             
-            # ==================== 介面顯示 (保持不變) ====================
+            # ==================== 介面顯示 (行動版優化) ====================
             st.subheader(f"📈 {stock_name} ({stock_symbol_actual})")
             
-            col1, col2, col3, col4, col5 = st.columns(5)
+            # 🚀 優化: 使用 st.columns(3) 替代 st.columns(5)，讓 metrics 在手機上排版更優雅
+            col1, col2, col3 = st.columns(3)
             col1.metric("股價", f"{current_price:.2f}")
             col2.metric("五線譜", fiveline_zone)
             col3.metric("RSI(14)", f"{current['RSI']:.1f}")
+
+            # 剩下的 metrics 放在第二排，確保手機上的空間足夠
+            col4, col5 = st.columns(2)
             col4.metric("KD", f"K:{current['K']:.1f} D:{current['D']:.1f}")
             col5.metric("Slope", f"{slope:.4f}", delta="上升" if slope > 0 else "下降")
             
@@ -348,13 +405,14 @@ if analyze_button:
             
             with tab1:
                 st.markdown(f"趨勢斜率: **{slope:.4f} ({slope_dir})**")
+                # 圖表配色採用柔和大地色系
                 fig1 = go.Figure()
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#000000', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+2SD'], mode='lines', name='TL+2SD', line=dict(color='#FF00FF', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+1SD'], mode='lines', name='TL+1SD', line=dict(color='#FF69B4', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#808080', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#87CEFA', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#0000FF', width=2)))
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+2SD'], mode='lines', name='TL+2SD', line=dict(color='#C8A2C8', width=2))) 
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+1SD'], mode='lines', name='TL+1SD', line=dict(color='#DDA0DD', width=2)))
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#B0A595', width=2))) 
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#A3C1AD', width=2))) 
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#8FBC8F', width=2))) 
                 fig1.update_layout(title="五線譜走勢圖", height=500, hovermode='x unified', template='plotly_white')
                 st.plotly_chart(fig1, use_container_width=True)
             
@@ -367,7 +425,7 @@ if analyze_button:
                     y=plot_data['Close'],
                     mode='lines',
                     name='股價',
-                    line=dict(color='#000000', width=2),
+                    line=dict(color='#4A4A4A', width=2),
                     hovertemplate='股價: %{y:.2f}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
@@ -375,7 +433,7 @@ if analyze_button:
                     y=plot_data['UB'],
                     mode='lines',
                     name='上通道',
-                    line=dict(color='#FF69B4', width=2),
+                    line=dict(color='#DDA0DD', width=2),
                     hovertemplate='上通道: %{y:.2f}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
@@ -383,7 +441,7 @@ if analyze_button:
                     y=plot_data['MA20W'],
                     mode='lines',
                     name='20週均線',
-                    line=dict(color='#808080', width=2),
+                    line=dict(color='#B0A595', width=2),
                     hovertemplate='20週MA: %{y:.2f}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
@@ -391,7 +449,7 @@ if analyze_button:
                     y=plot_data['LB'],
                     mode='lines',
                     name='下通道',
-                    line=dict(color='#87CEFA', width=2),
+                    line=dict(color='#A3C1AD', width=2),
                     hovertemplate='下通道: %{y:.2f}<extra></extra>'
                 ))
                 
@@ -419,27 +477,27 @@ if analyze_button:
                 valid_data['MA60'] = valid_data['Close'].rolling(60).mean()
                 
                 fig_ma = go.Figure()
-                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='black', width=2)))
-                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF6B6B', width=1.5)))
-                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA10'], mode='lines', name='MA10', line=dict(color='#4ECDC4', width=1.5)))
-                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA20'], mode='lines', name='MA20', line=dict(color='#45B7D1', width=1.5)))
-                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA60'], mode='lines', name='MA60', line=dict(color='#FFA07A', width=1.5)))
+                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
+                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF8C66', width=1.5))) 
+                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA10'], mode='lines', name='MA10', line=dict(color='#C8A2C8', width=1.5)))
+                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA20'], mode='lines', name='MA20', line=dict(color='#B0A595', width=1.5)))
+                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA60'], mode='lines', name='MA60', line=dict(color='#A3C1AD', width=1.5)))
                 fig_ma.update_layout(title="移動平均線 (MA5/MA10/MA20/MA60)", height=350, hovermode='x unified', template='plotly_white')
                 st.plotly_chart(fig_ma, use_container_width=True)
                 
                 fig3 = go.Figure()
-                fig3.add_trace(go.Scatter(x=valid_data.index, y=valid_data['RSI'], mode='lines', name='RSI(14)', line=dict(color='purple', width=2)))
-                fig3.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="超買")
-                fig3.add_hline(y=50, line_dash="dot", line_color="gray", annotation_text="中線")
-                fig3.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="超賣")
+                fig3.add_trace(go.Scatter(x=valid_data.index, y=valid_data['RSI'], mode='lines', name='RSI(14)', line=dict(color='#DDA0DD', width=2)))
+                fig3.add_hline(y=70, line_dash="dash", line_color="#FF8C66", annotation_text="超買")
+                fig3.add_hline(y=50, line_dash="dot", line_color="#B0A595", annotation_text="中線")
+                fig3.add_hline(y=30, line_dash="dash", line_color="#A3C1AD", annotation_text="超賣")
                 fig3.update_layout(title="RSI 相對強弱指標 (週期: 14天)", height=300, hovermode='x unified', template='plotly_white')
                 st.plotly_chart(fig3, use_container_width=True)
                 
                 fig4 = go.Figure()
-                fig4.add_trace(go.Scatter(x=valid_data.index, y=valid_data['K'], mode='lines', name='K', line=dict(color='blue', width=2)))
-                fig4.add_trace(go.Scatter(x=valid_data.index, y=valid_data['D'], mode='lines', name='D', line=dict(color='red', width=2)))
-                fig4.add_hline(y=80, line_dash="dash", line_color="red", annotation_text="超買")
-                fig4.add_hline(y=20, line_dash="dash", line_color="green", annotation_text="超賣")
+                fig4.add_trace(go.Scatter(x=valid_data.index, y=valid_data['K'], mode='lines', name='K', line=dict(color='#FF8C66', width=2)))
+                fig4.add_trace(go.Scatter(x=valid_data.index, y=valid_data['D'], mode='lines', name='D', line=dict(color='#DDA0DD', width=2)))
+                fig4.add_hline(y=80, line_dash="dash", line_color="#FF8C66", annotation_text="超買")
+                fig4.add_hline(y=20, line_dash="dash", line_color="#A3C1AD", annotation_text="超賣")
                 fig4.update_layout(title="KD 隨機指標", height=300, hovermode='x unified', template='plotly_white')
                 st.plotly_chart(fig4, use_container_width=True)
             
@@ -469,8 +527,6 @@ if analyze_button:
             
             with st.spinner("🧠 AI 分析中..."):
                 try:
-                    # 由於只剩下 ChatGPT 選項，我們可以直接運行其邏輯
-                    # if ai_model == "ChatGPT (OpenAI)":
                     client = OpenAI(api_key=api_key)
                     response = client.chat.completions.create(
                         model="gpt-4",
@@ -478,13 +534,6 @@ if analyze_button:
                         temperature=0.7
                     )
                     ai_response = response.choices[0].message.content
-                    # 移除 Gemini 的 else 邏輯
-                    # else:
-                    #     genai.configure(api_key=api_key)
-                    #     model = genai.GenerativeModel('gemini-1.5-flash')
-                    #     response = model.generate_content(prompt)
-                    #     ai_response = response.text
-                    
                     st.markdown(ai_response)
                 except Exception as e:
                     st.error(f"❌ AI 分析失敗：{str(e)}。請檢查 API Key 是否正確。")
