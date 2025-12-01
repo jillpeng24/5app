@@ -280,7 +280,6 @@ def download_stock_data_with_fallback(stock_input, days):
 
 # ==================== 🛠️ 智能分析生成函數 (方案 B 核心 - 整合情緒) ====================
 
-# 🛠️ 修正 1: 接受完整的 BBW series 數據，以便計算 quantile
 def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, full_bbw_series):
     """
     根據多種技術指標的硬編碼規則，生成分析摘要。
@@ -330,7 +329,7 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
         sentiment_analysis.append(f"🟢 **極度悲觀：** 威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區，市場情緒偏向恐慌，可能醞釀技術性反彈。")
     
     # 2.2 成交量比率判斷狂熱度
-    if current_v_ratio > 1.8:
+    if current_v_ratio > 1.8: # 更嚴格的熱度判斷
         sentiment_analysis.append(f"⚠️ **成交狂熱：** 成交量 ({current_v_ratio:.1f}倍均量) 異常放大，需警惕狂熱性追漲或恐慌性拋售。")
     
     # 2.3 BBW 判斷收縮
@@ -414,6 +413,7 @@ if analyze_button:
 
             # 🌟 新增指標計算區
             with st.spinner("🔧 計算所有技術指標..."):
+                # 舊指標
                 regression_data['RSI'] = calculate_rsi(regression_data['Close'], 14)
                 macd, signal, hist = calculate_macd(regression_data['Close'])
                 regression_data['MACD'] = macd
@@ -423,15 +423,18 @@ if analyze_button:
                 regression_data['K'] = k
                 regression_data['D'] = d
                 
+                # 🛠️ 修正 4: 在此處計算所有移動平均線，包括 MA60
                 regression_data['MA5'] = regression_data['Close'].rolling(5).mean()
                 regression_data['MA10'] = regression_data['Close'].rolling(10).mean()
                 regression_data['MA20'] = regression_data['Close'].rolling(20).mean()
+                regression_data['MA60'] = regression_data['Close'].rolling(60).mean() # 新增 MA60
                 
                 regression_data['Volume_MA5'] = regression_data['Volume'].rolling(5).mean()
                 regression_data['Volume_Ratio'] = regression_data['Volume'] / regression_data['Volume_MA5']
                 
                 regression_data['RSI_Divergence'] = detect_rsi_divergence(regression_data['Close'], regression_data['RSI'])
                 
+                # 新增指標 (ADX, BBW, %R)
                 adx, plus_di, minus_di = calculate_adx(regression_data['High'], regression_data['Low'], regression_data['Close'])
                 regression_data['ADX'] = adx
                 regression_data['+DI'] = plus_di
@@ -445,7 +448,8 @@ if analyze_button:
             
             # ==================== D. 買賣訊號判斷 (保持不變) ====================
             with st.spinner("🎯 生成買賣訊號..."):
-                valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R'])
+                # 確保 valid_data 在計算完所有指標後再進行 dropna
+                valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R', 'MA60']) 
                 
                 if valid_data.empty:
                     st.error("❌ 資料不足")
@@ -473,7 +477,6 @@ if analyze_button:
                 else:
                     fiveline_zone = "極度悲觀 (-2SD以下)"
                 
-                # (中略: 賣出/買入訊號判斷保持不變)
                 # ===== 賣出訊號判斷 (整合新指標) =====
                 sell_signals = []
                 # 1. 高檔訊號
@@ -631,6 +634,7 @@ if analyze_button:
                 
                 fig_ma = go.Figure()
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
+                # 🛠️ 修正 5: 確保 MA60 在 valid_data 中存在
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF8C66', width=1.5))) 
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA10'], mode='lines', name='MA10', line=dict(color='#C8A2C8', width=1.5)))
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA20'], mode='lines', name='MA20', line=dict(color='#B0A595', width=1.5)))
@@ -703,7 +707,7 @@ if analyze_button:
                     current, 
                     sell_signals, 
                     buy_signals,
-                    valid_data['BBW'] # 修正 2: 傳入完整的 BBW 序列
+                    valid_data['BBW'] # 傳入完整的 BBW 序列
                 )
                 st.markdown(analysis_result)
         
