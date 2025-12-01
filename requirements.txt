@@ -1,16 +1,13 @@
-# .streamlit/config.toml (不需要您動手，但作為知識補充)
-[general]
-python_version = "3.10"
-
-# 專案必需的 Streamlit 相關庫
-streamlit>=1.30.0
-pandas>=2.1.0
-numpy>=1.26.0
-plotly>=5.18.0
+# Streamlit 核心
+streamlit
+pandas
+numpy
+plotly
 
 # 股票資料庫
-yfinance>=0.2.36
+yfinance
 
-# AI 模型庫 (請確認這行是正確的)
-openai>=1.12.0
-google-genai>=0.11.0
+# AI 模型庫 (請注意：我們暫時只保留 openai，以排除 google-genai 的安裝衝突)
+openai
+# google-genai 相關套件請先註釋或刪除
+# google-genai
