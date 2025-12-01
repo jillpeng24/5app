@@ -4,15 +4,30 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-# 移除 OpenAI 匯入， App 不再需要任何 API Key
+# 移除 OpenAI 匯入
 # from openai import OpenAI
 
-# ==================== 🛠️ 自訂 CSS 樣式 (終極日雜風格) ====================
+# ==================== 🛠️ 自訂 CSS 樣式 (終極日雜風格 + 隱藏側邊欄) ====================
 custom_css = """
 <style>
 /* 隱藏 Streamlit 頁腳和菜單按鈕 */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
+
+/* 隱藏側邊欄，實現單欄模式 */
+section[data-testid="stSidebar"] {
+    display: none;
+}
+/* 確保主內容區佔滿整個寬度 */
+.block-container {
+    padding-top: 1rem !important;
+    padding-bottom: 0rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+}
+.main {
+    max-width: 1000px; /* 設置最大寬度，在寬螢幕下不會過長 */
+}
 
 /* 全局背景色與字體：柔和的米白和深灰 */
 body, .main, .st-emotion-cache-1dp6dkb {
@@ -22,41 +37,24 @@ body, .main, .st-emotion-cache-1dp6dkb {
 }
 
 /* 標題調整：降低視覺重量，強調簡潔 */
-.st-emotion-cache-10trblm {
+h1 {
+    font-size: 1.8rem;
     color: #4A4A4A; 
-    font-weight: 400; /* 更纖細 */
-    border-bottom: 1px solid #E5E5E5; /* 極細下劃線 */
-    padding-bottom: 5px;
-    margin-bottom: 15px;
+    font-weight: 400;
 }
 
-/* 側邊欄調整 */
-.st-emotion-cache-vk3ypz {
-    background-color: #f7f7f7; /* 淺灰色側邊欄 */
-    border-right: 1px solid #E0E0E0;
-    padding-top: 1.5rem; /* 增加頂部留白 */
-}
-
-/* 輸入框/選擇框的樣式：圓潤且柔和的邊框 */
-.st-emotion-cache-1cypcdb, .st-emotion-cache-1wmy99i { /* 涵蓋多種輸入元件 */
-    border-radius: 8px; /* 柔和圓角 */
-    border: 1px solid #D9D9D9; /* 淺色邊框 */
-    box-shadow: none !important; /* 移除預設陰影 */
-    background-color: white;
-}
-
-/* 調整主要的 Metric 區塊 (卡片風格) */
+/* 輸入/Metric 卡片的樣式 */
 .st-emotion-cache-1cypcdb {
-    border: 1px solid #EBEBEB; /* 更淺、更自然感的邊框 */
+    border: 1px solid #EBEBEB;
     border-radius: 12px;
     padding: 15px;
     background-color: #fffffe; 
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.02); /* 極輕微、分散的陰影 */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.02);
 }
 
 /* Metric 的指標文字顏色 (日雜強調色: 淺棕色/大地色) */
 .css-1r6rthg {
-    color: #9E8974 !important; /* 更深的柔和棕色 */
+    color: #9E8974 !important; 
     font-weight: 600;
     font-size: 1.6rem !important;
 }
@@ -68,68 +66,68 @@ body, .main, .st-emotion-cache-1dp6dkb {
     border-radius: 8px;
     border: none;
     font-weight: 500;
-    transition: background-color 0.2s;
-}
-.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"]:hover {
-    background-color: #917C64; /* 懸停時略深 */
-}
-
-/* 資訊/警告框的樣式調整，使其更柔和 */
-[data-testid="stAlert"] {
-    border-left: 5px solid #EBD5D5; /* 警告色柔和化 */
-    background-color: #FEFCFB;
-    color: #5A5A5A;
-    border-radius: 8px;
 }
 </style>
 """
 
-# ==================== 頁面配置 ====================
-st.set_page_config(page_title="五線譜 + 樂活通道分析")
+# ==================== 頁面配置與 CSS 注入 ====================
+st.set_page_config(page_title="五線譜 + 樂活通道分析", layout="wide")
 st.title("五線譜 + 樂活通道 分析系統")
 
 # 注入自訂 CSS
 st.markdown(custom_css, unsafe_allow_html=True)
 
 
-# ==================== Sidebar 設定 ====================
-st.sidebar.header("⚙️ 參數設定")
+# ==================== 🌟 參數輸入區 (單欄模式) 🌟 ====================
 
-stock_input = st.sidebar.text_input("股票代號", value="00675L", help="台股請輸入代號,系統會自動加上.TW或.TWO")
+# 股票代號、期間、按鈕全部移到主頁面頂部的單一容器
+with st.container(border=True):
+    st.markdown("### ⚙️ 分析參數設定")
 
-# 移除 AI 模型選擇
-# ai_model = st.sidebar.selectbox("AI 模型選擇", ["ChatGPT (OpenAI)"])
+    # 1. 股票代號
+    stock_input = st.text_input("股票代號", value="00675L", help="台股請輸入代號,系統會自動加上.TW或.TWO")
 
-# 💡 API Key 處理：全部移除， App 不再需要 API Key
-# 相關程式碼已被移除
-
-# --- 期間選擇部分保持不變 ---
-period_options = {
-    "短期 (0.5年)": 0.5,
-    "中期 (1年)": 1.0,
-    "長期 (3.5年)": 3.5,
-    "超長期 (10年)": 10.0
-}
-
-period_type = st.sidebar.selectbox("五線譜分析期間", list(period_options.keys()) + ["自訂期間"], index=2)
-
-if period_type == "自訂期間":
-    st.sidebar.markdown("### 📅 自訂日期範圍")
-    col_start, col_end = st.sidebar.columns(2)
-    with col_start:
-        start_date_custom = st.date_input("開始日期", value=datetime.now() - timedelta(days=365*3))
-    with col_end:
-        end_date_custom = st.date_input("結束日期", value=datetime.now())
+    # 2. 期間選擇
+    period_options = {
+        "短期 (0.5年)": 0.5,
+        "中期 (1年)": 1.0,
+        "長期 (3.5年)": 3.5,
+        "超長期 (10年)": 10.0
+    }
     
-    days = (end_date_custom - start_date_custom).days
-    years = days / 365.0
-else:
-    years = period_options[period_type]
-    days = int(years * 365)
+    col_type, col_start_date, col_end_date = st.columns([1, 1, 1])
 
-analyze_button = st.sidebar.button("🚀 開始分析", type="primary")
+    with col_type:
+        period_type = st.selectbox("五線譜分析期間", list(period_options.keys()) + ["自訂期間"], index=2)
 
-# ==================== 技術指標計算函數 (新增進階指標) ====================
+    # 處理日期邏輯
+    if period_type == "自訂期間":
+        with col_start_date:
+            # 修正日期顯示問題：確保傳入的是 date 物件
+            start_date_custom = st.date_input("開始日期", value=datetime.now().date() - timedelta(days=365*3)) 
+        with col_end_date:
+            end_date_custom = st.date_input("結束日期", value=datetime.now().date())
+        
+        days = (end_date_custom - start_date_custom).days
+        years = days / 365.0
+    else:
+        # 顯示當前日期範圍（僅作展示）
+        current_end_date = datetime.now().date()
+        current_start_date = current_end_date - timedelta(days=int(period_options[period_type] * 365))
+        
+        with col_start_date:
+            st.markdown(f"**開始日**：`{current_start_date}`")
+        with col_end_date:
+            st.markdown(f"**結束日**：`{current_end_date}`")
+
+        years = period_options[period_type]
+        days = int(years * 365)
+    
+    st.markdown("---")
+    analyze_button = st.button("🚀 開始分析", type="primary", use_container_width=True) # 按鈕佔滿寬度
+
+
+# ==================== 技術指標計算函數 (保持不變) ====================
 def calculate_rsi(data, period=14):
     """計算 RSI 指標"""
     delta = data.diff()
@@ -294,7 +292,7 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     current_williams_r = current['%R']
     current_v_ratio = current['Volume_Ratio']
     
-    # 計算歷史 BBW 分位數 (修正點)
+    # 計算歷史 BBW 分位數
     bbw_quantile = full_bbw_series.quantile(0.1)
     
     # --- 1. 趨勢與動能判斷 (Trend & Momentum) ---
@@ -367,7 +365,7 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     return "\n".join(analysis_text)
 
 
-# ==================== 主要分析邏輯 (修正點) ====================
+# ==================== 主要分析邏輯 ====================
 if analyze_button:
     if not stock_input:
         st.error("❌ 請輸入股票代號")
@@ -386,7 +384,7 @@ if analyze_button:
                 
                 st.success(f"✅ 成功載入 {stock_name} ({stock_symbol_actual}) 資料")
             
-            # (中略: 五線譜、樂活通道計算保持不變)
+            # ==================== A. 五線譜計算 (保持不變) ====================
             with st.spinner("📈 計算五線譜..."):
                 x_indices = np.arange(len(regression_data))
                 y_values = regression_data['Close'].values
@@ -423,11 +421,11 @@ if analyze_button:
                 regression_data['K'] = k
                 regression_data['D'] = d
                 
-                # 🛠️ 修正 4: 在此處計算所有移動平均線，包括 MA60
+                # 🛠️ 修正 MA60
                 regression_data['MA5'] = regression_data['Close'].rolling(5).mean()
                 regression_data['MA10'] = regression_data['Close'].rolling(10).mean()
                 regression_data['MA20'] = regression_data['Close'].rolling(20).mean()
-                regression_data['MA60'] = regression_data['Close'].rolling(60).mean() # 新增 MA60
+                regression_data['MA60'] = regression_data['Close'].rolling(60).mean()
                 
                 regression_data['Volume_MA5'] = regression_data['Volume'].rolling(5).mean()
                 regression_data['Volume_Ratio'] = regression_data['Volume'] / regression_data['Volume_MA5']
@@ -448,7 +446,6 @@ if analyze_button:
             
             # ==================== D. 買賣訊號判斷 (保持不變) ====================
             with st.spinner("🎯 生成買賣訊號..."):
-                # 確保 valid_data 在計算完所有指標後再進行 dropna
                 valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R', 'MA60']) 
                 
                 if valid_data.empty:
@@ -479,7 +476,6 @@ if analyze_button:
                 
                 # ===== 賣出訊號判斷 (整合新指標) =====
                 sell_signals = []
-                # 1. 高檔訊號
                 if sd_level >= 2:
                     if current['RSI_Divergence']:
                         sell_signals.append("⚠️ RSI 背離 (高檔)")
@@ -487,38 +483,29 @@ if analyze_button:
                         sell_signals.append("⚠️ RSI 從高檔回落 (超買區)")
                     if current['K'] < current['D'] and current['K'] > 80:
                         sell_signals.append("⚠️ KD 高檔死叉")
-                # 2. DMI 轉空訊號
                 if current['+DI'] < current['-DI'] and current['ADX'] > 25:
                     sell_signals.append("🚨 DMI 趨勢轉空 (+DI < -DI 且 ADX 強)")
-                # 3. 爆量滯漲
                 if current['Volume_Ratio'] > 2.0 and (current['Close'] - current['Open']) / current['Open'] < 0.005:
                     sell_signals.append("⚠️ 爆量滯漲 (V-Ratio > 2.0)")
-                # 4. 威廉指標極度超買
                 if current['%R'] > -20: 
                     sell_signals.append("🚨 威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
-                # 5. 跌破均線
                 if current['Close'] < current['MA10']:
                     sell_signals.append("🚨 跌破 MA10")
 
                 
                 # ===== 買入訊號判斷 (整合新指標) =====
                 buy_signals = []
-                # 1. 低檔訊號
                 if sd_level <= -1.0:
                     if current['RSI'] < 30 and current['RSI'] > previous['RSI']:
                         buy_signals.append("✅ RSI 從超賣區反彈")
                     if current['K'] > current['D'] and current['K'] < 20:
                         buy_signals.append("✅ KD 低檔金叉")
-                # 2. DMI 轉多訊號
                 if current['+DI'] > current['-DI'] and current['ADX'] > 25:
                     buy_signals.append("✅ DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
-                # 3. 波動性收縮
                 if current['BBW'] < valid_data['BBW'].quantile(0.1): # 修正：從 valid_data 獲取 quantile
                     buy_signals.append("⚠️ BBW 波動性極端收縮 (潛在爆發點)")
-                # 4. 威廉指標極度超賣
                 if current['%R'] < -80:
                     buy_signals.append("✅ 威廉指標 (%R) 顯示極度悲觀情緒，潛在反彈")
-                # 5. 趨勢確認
                 if 0.5 <= sd_level <= 1.5:
                     if slope > 0:
                         buy_signals.append("✅ 趨勢向上 (Slope > 0) 且股價合理")
@@ -541,16 +528,18 @@ if analyze_button:
             # ==================== 介面顯示 (行動版優化) ====================
             st.subheader(f"📈 {stock_name} ({stock_symbol_actual})")
             
-            # 顯示關鍵指標
-            col1, col2, col3 = st.columns(3)
-            col1.metric("股價", f"{current_price:.2f}")
-            col2.metric("五線譜", fiveline_zone)
-            col3.metric("RSI(14)", f"{current['RSI']:.1f}")
+            # 顯示關鍵指標 - 類似參考圖的卡片風格
+            with st.container(border=True):
+                st.markdown("#### 🚀 關鍵數據摘要")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("股價", f"{current_price:.2f}")
+                col2.metric("五線譜", fiveline_zone)
+                col3.metric("RSI(14)", f"{current['RSI']:.1f}")
 
-            col4, col5, col6 = st.columns(3) # 新增一個欄位
-            col4.metric("KD", f"K:{current['K']:.1f} D:{current['D']:.1f}")
-            col5.metric("ADX (強度)", f"{current['ADX']:.1f}")
-            col6.metric("%R (情緒)", f"{current['%R']:.1f}") # 顯示 %R 指標
+                col4, col5, col6 = st.columns(3)
+                col4.metric("KD", f"K:{current['K']:.1f} D:{current['D']:.1f}")
+                col5.metric("ADX (強度)", f"{current['ADX']:.1f}")
+                col6.metric("%R (情緒)", f"{current['%R']:.1f}")
             
             st.divider()
             st.markdown(f"### {action}")
@@ -562,8 +551,8 @@ if analyze_button:
             if buy_signals:
                 st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
             
-            # ==================== 圖表分頁 (保持不變) ====================
-            tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "🚀 波動與情緒"]) # Tab 標題修改
+            # ==================== 圖表分頁 (頂部導航 Tab) ====================
+            tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "🚀 波動與情緒"])
 
             with tab1:
                 st.markdown(f"趨勢斜率: **{slope:.4f} ({slope_dir})**")
@@ -634,7 +623,6 @@ if analyze_button:
                 
                 fig_ma = go.Figure()
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
-                # 🛠️ 修正 5: 確保 MA60 在 valid_data 中存在
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF8C66', width=1.5))) 
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA10'], mode='lines', name='MA10', line=dict(color='#C8A2C8', width=1.5)))
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA20'], mode='lines', name='MA20', line=dict(color='#B0A595', width=1.5)))
@@ -707,7 +695,7 @@ if analyze_button:
                     current, 
                     sell_signals, 
                     buy_signals,
-                    valid_data['BBW'] # 傳入完整的 BBW 序列
+                    valid_data['BBW']
                 )
                 st.markdown(analysis_result)
         
@@ -717,9 +705,12 @@ if analyze_button:
             st.code(traceback.format_exc())
 
 else:
-    st.info("👈 請設定參數後點擊「開始分析」")
+    # 初始顯示區塊 (類似參考圖底部的介紹)
+    st.markdown("---")
     st.markdown("""
     ### 🎯 智能交易系統特色
+    
+    本系統基於多重指標的複合判斷，提供客觀的趨勢、動能和情緒分析。
     
     **五線譜分析**
     - 價值位階判斷（昂貴/合理/便宜）
@@ -729,12 +720,8 @@ else:
     - 布林通道上下軌
     - 20週移動平均生命線
     
-    **智能訊號 (新增)**
-    - ✅ 趨向指標 (ADX, DMI) 判斷趨勢強度和多空轉換
-    - ✅ 布林帶寬度 (BBW) 偵測波動性收縮（爆發點）
-    - ✅ 威廉指標 (%R) 捕捉極端市場情緒
-    - ✅ RSI, MACD, KD, 量價關係
-    
-    **Python 內部分析 (零 Key)**
-    - 整合所有指標給出操作建議，不依賴外部 API。
+    **大師級複合指標**
+    - **趨向指標 (ADX, DMI)**：判斷趨勢強度和多空轉換。
+    - **布林帶寬度 (BBW)**：偵測波動性收縮（潛在爆發點）。
+    - **威廉指標 (%R)**：捕捉極端市場情緒。
     """)
