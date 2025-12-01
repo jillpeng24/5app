@@ -1,4 +1,3 @@
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -8,93 +7,109 @@ from datetime import datetime, timedelta
 # 移除 OpenAI 匯入
 # from openai import OpenAI
 
-# ==================== 🛠️ 自訂 CSS 樣式 (終極日雜風格 + 隱藏側邊欄) ====================
+# =========================================================
+# 🌸 B — Sakura Latte Theme（櫻花霧面奶茶主題）
+# =========================================================
 custom_css = """
 <style>
-/* 隱藏 Streamlit 頁腳和菜單按鈕 */
+/* 隱藏 Streamlit 頁腳與右上角選單 */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 
-/* 全局背景色與字體：柔和的米白和深灰 */
+/* 全局背景：霧面奶茶米白 */
 body, .main, .st-emotion-cache-1dp6dkb {
-    background-color: #fdfdfd; /* 極淺米白 */
-    color: #5A5A5A; /* 柔和深灰 */
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+    background-color: #FAF7F4 !important;
+    color: #5F5A58;
+    font-family: "Noto Sans TC", "Noto Sans JP", "Hiragino Sans", sans-serif;
 }
 
 /* 隱藏側邊欄，實現單欄模式 */
 section[data-testid="stSidebar"] {
     display: none;
 }
-/* 確保主內容區佔滿整個寬度 */
+
+/* 主區塊寬度與留白 */
 .block-container {
     padding-top: 1rem !important;
-    padding-bottom: 0rem;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
 }
 .main {
-    max-width: 1200px;
+    max-width: 1180px;
 }
 
-/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」，確保在手機上不被截斷 */
-.st-emotion-cache-10trblm {
-    color: #4A4A4A; 
-    font-weight: 400; 
-    border-bottom: 1px solid #E5E5E5; 
-    padding-bottom: 5px;
-    margin-bottom: 15px;
-    font-size: 1.8rem; /* 確保抬頭不會被截斷 */
-    white-space: nowrap; /* 強制不換行 */
-    overflow: hidden; /* 隱藏超出的部分 */
-    text-overflow: ellipsis; /* 顯示省略號 */
-    max-width: 100%; /* 限制寬度 */
-}
-
-/* 輸入/Metric 卡片的樣式 */
-[data-testid="stContainer"], .st-emotion-cache-1cypcdb { 
+/* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
+[data-testid="stContainer"], [data-testid="stVerticalBlock"] > [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] { 
     border-radius: 12px;
-    border: 1px solid #EBEBEB;
-    background-color: #fffffe; 
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.02);
+    background-color: #FFFFFFF2;
+    border: 1px solid #F1E6E6;
+    box-shadow: 0 3px 10px rgba(210,170,160,0.10);
+    padding: 0.8rem;
+}
+/* Metric card specific style */
+.st-emotion-cache-1cypcdb {
+    border: 1px solid #F1E6E6;
+    background-color: #FFFFFFF2;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(210,170,160,0.10);
+    padding: 15px;
 }
 
-/* Metric 的指標文字顏色 (日雜強調色) */
-.css-1r6rthg {
-    color: #9E8974 !important; 
-    font-weight: 600;
-    font-size: 1.6rem !important;
+/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」並調整大小 */
+.st-emotion-cache-10trblm {
+    color: #A07C8C !important;
+    font-weight: 500 !important;
+    font-size: 1.7rem !important;
+    border-bottom: 1px solid #E7D8D8;
+    padding-bottom: 6px;
+    margin-bottom: 15px;
+    white-space: nowrap;
+    overflow: hidden;
 }
 
-/* 🎯 修正 1.4: 按鈕樣式改為淡紫色 (primary button) */
-.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"] {
-    background-color: #C8A2C8; /* 柔和淡紫色 */
-    color: white;
-    border-radius: 8px;
-    border: none;
-    font-weight: 500;
-}
-.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"]:hover {
-    background-color: #B28FB2; /* 懸停時略深 */
+/* 小標題（H3/H4）：粉棕灰 */
+h3, h4 {
+    font-size: 1.2rem !important;
+    color: #8B6F77 !important;
+    font-weight: 500 !important;
+    margin-top: 0.8rem !important;
 }
 
-/* 🎯 修正 1.4: Tab bar/active tab 顏色調整 */
-[data-testid="stTabs"] button[aria-selected="true"] {
-    color: #9E8974 !important; 
-    border-bottom-color: #C8A2C8 !important; 
-}
-
-/* 🎯 修正 2.2: 調整分析報告內文字體大小和粗細 */
-/* 針對內部的 H3 (Analysis points 1-4) */
+/* 🎯 修正 2.2: 調整分析報告內文，移除粗體 */
 h3 {
-    font-size: 1.2rem; /* 標題文字縮小 */
-    font-weight: 500; /* 標題不需要粗體 */
-    margin-top: 1rem;
-    color: #5A5A5A;
+    font-weight: normal !important; 
+    font-size: 1.1rem !important;
 }
-/* 確保內文的字體大小正常 */
 p {
     font-size: 1rem;
+    color: #5F5A58 !important;
+}
+
+/* Tabs：選取底線為粉紫 */
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #A07C8C !important;
+    border-bottom: 3px solid #C7A5B5 !important;
+}
+
+/* 🎯 修正 1.4: 按鈕：粉棕主色，hover 更深 */
+button[kind="primary"], .st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"] {
+    background-color: #D7B8A8 !important; /* 柔和粉棕色 */
+    color: white !important;
+    border-radius: 10px !important;
+    border: none !important;
+    padding: 0.45rem 1rem !important;
+    font-weight: 500 !important;
+}
+
+button[kind="primary"]:hover,
+.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"]:hover {
+    background-color: #C49E8F !important;
+}
+
+/* Metric 主字：粉紫強調 */
+.css-1r6rthg {
+    color: #A07C8C !important;
+    font-weight: 600 !important;
 }
 </style>
 """
@@ -321,24 +336,23 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     return "\n".join(analysis_text)
 
 
-# 輔助：圖表函數 (保持不變)
-
+# 輔助：圖表函數
 def render_fiveline_plot(valid_data, slope_dir, slope):
     st.markdown(f"趨勢斜率: **{slope:.4f} ({slope_dir})**")
     fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
-    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+2SD'], mode='lines', name='TL+2SD', line=dict(color='#C8A2C8', width=2))) 
-    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+1SD'], mode='lines', name='TL+1SD', line=dict(color='#DDA0DD', width=2)))
-    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#B0A595', width=2))) 
-    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#A3C1AD', width=2))) 
-    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#8FBC8F', width=2))) 
+    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#8A6F68', width=2.0))) # 價格線：粉棕灰
+    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+2SD'], mode='lines', name='TL+2SD', line=dict(color='#C7A5B5', width=1.8))) # 粉紫
+    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+1SD'], mode='lines', name='TL+1SD', line=dict(color='#DCC7D6', width=1.8))) # 更淡粉紫
+    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#BBA6A0', width=2))) # 奶茶灰棕
+    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#D7CFCB', width=1.8)))
+    fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#E5DDDA', width=1.8)))
     fig1.update_layout(title="五線譜走勢圖", height=500, hovermode='x unified', template='plotly_white')
     st.plotly_chart(fig1, use_container_width=True)
 
 def render_lohas_plot(valid_data, current_price, current_ma20w):
     plot_data = valid_data.copy()
     fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2), hovertemplate='股價: %{y:.2f}<extra></extra>'))
+    fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['Close'], mode='lines', name='股價', line=dict(color='#8A6F68', width=2), hovertemplate='股價: %{y:.2f}<extra></extra>'))
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['UB'], mode='lines', name='上通道', line=dict(color='#DDA0DD', width=2), hovertemplate='上通道: %{y:.2f}<extra></extra>'))
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['MA20W'], mode='lines', name='20週均線', line=dict(color='#B0A595', width=2), hovertemplate='20週MA: %{y:.2f}<extra></extra>'))
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['LB'], mode='lines', name='下通道', line=dict(color='#A3C1AD', width=2), hovertemplate='下通道: %{y:.2f}<extra></extra>'))
@@ -352,7 +366,7 @@ def render_oscillator_plots(valid_data):
     st.markdown("### 📊 震盪指標 (RSI, KD, MACD)")
     
     fig_ma = go.Figure()
-    fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
+    fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#8A6F68', width=2)))
     fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF8C66', width=1.5))) 
     fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA10'], mode='lines', name='MA10', line=dict(color='#C8A2C8', width=1.5)))
     fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA20'], mode='lines', name='MA20', line=dict(color='#B0A595', width=1.5)))
@@ -430,12 +444,12 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
 
         # 🎯 需求 2: 日期顯示移到選擇分析期間下方
         if period_type == "自訂期間":
-            st.markdown("#### 📅 自訂日期範圍")
             col_start, col_end = st.columns(2)
             with col_start:
-                start_date_custom = st.date_input("開始日期", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
+                # 修正日期顯示問題：確保傳入的是 date 物件
+                start_date_custom = st.date_input("開始日", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
             with col_end:
-                end_date_custom = st.date_input("結束日期", value=datetime.now().date(), key="end_date_custom_key")
+                end_date_custom = st.date_input("結束日", value=datetime.now().date(), key="end_date_custom_key")
             
             days = (end_date_custom - start_date_custom).days
         else:
@@ -445,8 +459,11 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
             current_start_date = current_end_date - timedelta(days=days)
             
             # 🎯 需求 2: 移除粗體，直接顯示日期
-            st.markdown(f"開始日：{current_start_date}")
-            st.markdown(f"結束日：{current_end_date}")
+            col_start, col_end = st.columns(2)
+            with col_start:
+                st.markdown(f"開始日：{current_start_date}")
+            with col_end:
+                st.markdown(f"結束日：{current_end_date}")
         
         st.markdown("---")
         # 🎯 修正 1.4: 按鈕文字移除 🚀
@@ -559,7 +576,8 @@ def render_analysis_main(stock_input, days, analyze_button):
                 if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
                 if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
                 
-                tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) # 🎯 修正 1.4: 移除圖標
+                # 🎯 修正 1.4: 移除圖標
+                tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) 
 
                 with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
                 with tab2: render_lohas_plot(valid_data, current['Close'], current['MA20W']);
@@ -567,7 +585,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 with tab4: render_volatility_plots(valid_data, current);
 
                 st.divider()
-                # 🎯 修正 2.1: 移除 subheader 的粗體和圖標，使用簡單的 H3
+                # 🎯 修正 2.1: 移除 subheader 的圖標
                 st.markdown("### 智能深度分析 (無需 Key)") 
                 analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, valid_data['BBW'])
                 st.markdown(analysis_result)
@@ -597,8 +615,29 @@ col_left, col_right = st.columns([1, 2.5])
 
 # 渲染左欄的輸入區塊
 with col_left:
-    stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
+    render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
 
 # 渲染右欄的分析結果區塊
 with col_right:
+    # 由於 render_input_sidebar 在 with col_left 區塊內，它會將變量設置到 session_state 或返回。
+    # 這裡我們必須從 session_state 或硬編碼預設值獲取輸入。
+    # 為了簡潔和穩定，使用 session_state 中最新的值，並假設 analyze_button 是在 render_input_sidebar 中被設置的。
+
+    # 從 session_state 獲取輸入值
+    stock_input = st.session_state.stock_input_key if 'stock_input_key' in st.session_state else st.session_state.stock_input_value
+    analyze_button = st.session_state.analyze_button_key if 'analyze_button_key' in st.session_state else False
+    
+    # 計算 days 參數
+    period_type = st.session_state.period_type_key if 'period_type_key' in st.session_state else st.session_state.period_type_value
+    period_options = {"短期 (0.5年)": 0.5,"中期 (1年)": 1.0,"長期 (3.5年)": 3.5,"超長期 (10年)": 10.0}
+
+    if period_type == "自訂期間" and 'start_date_custom_key' in st.session_state:
+        start_date = st.session_state.start_date_custom_key
+        end_date = st.session_state.end_date_custom_key
+        days = (end_date - start_date).days
+    else:
+        years = period_options.get(period_type, 3.5)
+        days = int(years * 365)
+    
+    # 確保只在按鈕按下後運行分析
     render_analysis_main(stock_input, days, analyze_button)
