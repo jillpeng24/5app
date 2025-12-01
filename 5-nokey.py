@@ -194,7 +194,6 @@ def calculate_adx(high, low, close, period=14):
     df['-DMI'] = df['-DM'].ewm(alpha=alpha, adjust=False).mean()
     
     # 4. 計算 Directional Index (DI)
-    # 修正列名錯誤 (原程式碼有錯字 -DMI)
     df['+DI'] = (df['+DMI'] / df['ATR']) * 100
     df['-DI'] = (df['-DMI'] / df['ATR']) * 100
     
@@ -281,19 +280,23 @@ def download_stock_data_with_fallback(stock_input, days):
 
 # ==================== 🛠️ 智能分析生成函數 (方案 B 核心 - 整合情緒) ====================
 
-def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals):
+# 🛠️ 修正 1: 接受完整的 BBW series 數據，以便計算 quantile
+def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, full_bbw_series):
     """
     根據多種技術指標的硬編碼規則，生成分析摘要。
     """
     analysis_text = []
 
-    # 提取新指標
+    # 提取指標
     current_adx = current['ADX']
     current_plus_di = current['+DI']
     current_minus_di = current['-DI']
     current_bbw = current['BBW']
     current_williams_r = current['%R']
     current_v_ratio = current['Volume_Ratio']
+    
+    # 計算歷史 BBW 分位數 (修正點)
+    bbw_quantile = full_bbw_series.quantile(0.1)
     
     # --- 1. 趨勢與動能判斷 (Trend & Momentum) ---
     analysis_text.append("### 1. 趨勢與動能判斷 (Trend & Momentum)")
@@ -327,11 +330,10 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
         sentiment_analysis.append(f"🟢 **極度悲觀：** 威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區，市場情緒偏向恐慌，可能醞釀技術性反彈。")
     
     # 2.2 成交量比率判斷狂熱度
-    if current_v_ratio > 1.8: # 更嚴格的熱度判斷
+    if current_v_ratio > 1.8:
         sentiment_analysis.append(f"⚠️ **成交狂熱：** 成交量 ({current_v_ratio:.1f}倍均量) 異常放大，需警惕狂熱性追漲或恐慌性拋售。")
     
     # 2.3 BBW 判斷收縮
-    bbw_quantile = current['BBW'].quantile(0.1)
     if current_bbw < bbw_quantile: 
         sentiment_analysis.append(f"🔲 **波動性收縮：** 價格壓縮至極致，預期短期內將有**方向性大變動**。")
     
@@ -366,9 +368,8 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     return "\n".join(analysis_text)
 
 
-# ==================== 主要分析邏輯 (修正區) ====================
+# ==================== 主要分析邏輯 (修正點) ====================
 if analyze_button:
-    # 檢查是否為空，不再檢查 API Key
     if not stock_input:
         st.error("❌ 請輸入股票代號")
     else:
@@ -386,7 +387,7 @@ if analyze_button:
                 
                 st.success(f"✅ 成功載入 {stock_name} ({stock_symbol_actual}) 資料")
             
-            # ==================== A. 五線譜計算 (保持不變) ====================
+            # (中略: 五線譜、樂活通道計算保持不變)
             with st.spinner("📈 計算五線譜..."):
                 x_indices = np.arange(len(regression_data))
                 y_values = regression_data['Close'].values
@@ -403,7 +404,6 @@ if analyze_button:
                 regression_data['TL-1SD'] = trend_line - 1 * sd
                 regression_data['TL-2SD'] = trend_line - 2 * sd
                 
-            # ==================== B. 樂活通道計算 (保持不變) ====================
             with st.spinner("📊 計算樂活通道..."):
                 window = 100
                 regression_data['MA20W'] = regression_data['Close'].rolling(window=window, min_periods=window).mean()
@@ -414,7 +414,6 @@ if analyze_button:
 
             # 🌟 新增指標計算區
             with st.spinner("🔧 計算所有技術指標..."):
-                # 舊指標
                 regression_data['RSI'] = calculate_rsi(regression_data['Close'], 14)
                 macd, signal, hist = calculate_macd(regression_data['Close'])
                 regression_data['MACD'] = macd
@@ -433,7 +432,6 @@ if analyze_button:
                 
                 regression_data['RSI_Divergence'] = detect_rsi_divergence(regression_data['Close'], regression_data['RSI'])
                 
-                # 新增指標 (ADX, BBW, %R)
                 adx, plus_di, minus_di = calculate_adx(regression_data['High'], regression_data['Low'], regression_data['Close'])
                 regression_data['ADX'] = adx
                 regression_data['+DI'] = plus_di
@@ -445,7 +443,7 @@ if analyze_button:
                 williams_r = calculate_williams_r(regression_data['High'], regression_data['Low'], regression_data['Close'])
                 regression_data['%R'] = williams_r
             
-            # ==================== D. 買賣訊號判斷 (整合新指標) ====================
+            # ==================== D. 買賣訊號判斷 (保持不變) ====================
             with st.spinner("🎯 生成買賣訊號..."):
                 valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R'])
                 
@@ -475,6 +473,7 @@ if analyze_button:
                 else:
                     fiveline_zone = "極度悲觀 (-2SD以下)"
                 
+                # (中略: 賣出/買入訊號判斷保持不變)
                 # ===== 賣出訊號判斷 (整合新指標) =====
                 sell_signals = []
                 # 1. 高檔訊號
@@ -511,7 +510,7 @@ if analyze_button:
                 if current['+DI'] > current['-DI'] and current['ADX'] > 25:
                     buy_signals.append("✅ DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
                 # 3. 波動性收縮
-                if current['BBW'] < current['BBW'].quantile(0.1): 
+                if current['BBW'] < valid_data['BBW'].quantile(0.1): # 修正：從 valid_data 獲取 quantile
                     buy_signals.append("⚠️ BBW 波動性極端收縮 (潛在爆發點)")
                 # 4. 威廉指標極度超賣
                 if current['%R'] < -80:
@@ -703,7 +702,8 @@ if analyze_button:
                     fiveline_zone, 
                     current, 
                     sell_signals, 
-                    buy_signals
+                    buy_signals,
+                    valid_data['BBW'] # 修正 2: 傳入完整的 BBW 序列
                 )
                 st.markdown(analysis_result)
         
