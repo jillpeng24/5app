@@ -6,7 +6,8 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from openai import OpenAI
-import google.generativeai as genai
+# 移除 Google AI SDK 的匯入，解決 ModuleNotFoundError
+# import google.generativeai as genai
 
 # ==================== 頁面配置 ====================
 st.set_page_config(page_title="五線譜 + 樂活通道分析", layout="wide")
@@ -21,7 +22,8 @@ if stock_input and not ("." in stock_input):
 else:
     stock_symbol = stock_input
 
-ai_model = st.sidebar.selectbox("AI 模型選擇", ["ChatGPT (OpenAI)", "Gemini (Google)"])
+# 移除 Gemini 選項，只保留 ChatGPT
+ai_model = st.sidebar.selectbox("AI 模型選擇", ["ChatGPT (OpenAI)"])
 
 # 💡 優化 2: API Key 安全處理 - 優先從 Streamlit Secrets 讀取
 # 預期在 Streamlit Secrets 中配置為：
@@ -32,10 +34,8 @@ ai_model = st.sidebar.selectbox("AI 模型選擇", ["ChatGPT (OpenAI)", "Gemini 
 # 嘗試從 Secrets 讀取 Key
 api_key = None
 try:
-    if ai_model == "ChatGPT (OpenAI)":
-        api_key = st.secrets["external_api"]["openai_api_key"]
-    else:
-        api_key = st.secrets["external_api"]["gemini_api_key"]
+    # 簡化 Key 讀取邏輯，只針對 OpenAI
+    api_key = st.secrets["external_api"]["openai_api_key"]
 except (KeyError, AttributeError):
     # 如果 Secrets 中沒有配置，則允許用戶通過側邊欄輸入 (主要用於本地測試或臨時輸入)
     pass
@@ -43,17 +43,15 @@ except (KeyError, AttributeError):
 st.sidebar.markdown("### 🔑 API Key 配置")
 if not api_key:
     st.sidebar.warning("⚠️ Secrets 未配置。請輸入 Key。")
-    if ai_model == "ChatGPT (OpenAI)":
-        api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-    else:
-        api_key = st.sidebar.text_input("Gemini API Key", type="password")
+    # 簡化 Key 輸入邏輯，只針對 OpenAI
+    api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 else:
     st.sidebar.success("✅ API Key 已從 Secrets 安全載入。")
     
 # --- 期間選擇部分保持不變 ---
 period_options = {
     "短期 (0.5年)": 0.5,
-    "中期 (1年)": 1.0, 
+    "中期 (1年)": 1.0,
     "長期 (3.5年)": 3.5,
     "超長期 (10年)": 10.0
 }
@@ -122,7 +120,7 @@ def load_stock_data(symbol, days):
     """下載股票資料並獲取名稱，並進行緩存。"""
     end_date = datetime.now()
     # 增加額外的天數來確保技術指標計算所需歷史數據
-    start_date = end_date - timedelta(days=days + 500) 
+    start_date = end_date - timedelta(days=days + 500)
     
     stock_data = yf.download(symbol, start=start_date, end=end_date, progress=False)
     
@@ -335,33 +333,33 @@ if analyze_button:
                 
                 fig2 = go.Figure()
                 fig2.add_trace(go.Scatter(
-                    x=plot_data.index, 
+                    x=plot_data.index,
                     y=plot_data['Close'],
-                    mode='lines', 
+                    mode='lines',
                     name='股價',
                     line=dict(color='#000000', width=2),
                     hovertemplate='股價: %{y:.2f}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
-                    x=plot_data.index, 
+                    x=plot_data.index,
                     y=plot_data['UB'],
-                    mode='lines', 
+                    mode='lines',
                     name='上通道',
                     line=dict(color='#FF69B4', width=2),
                     hovertemplate='上通道: %{y:.2f}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
-                    x=plot_data.index, 
+                    x=plot_data.index,
                     y=plot_data['MA20W'],
-                    mode='lines', 
+                    mode='lines',
                     name='20週均線',
                     line=dict(color='#808080', width=2),
                     hovertemplate='20週MA: %{y:.2f}<extra></extra>'
                 ))
                 fig2.add_trace(go.Scatter(
-                    x=plot_data.index, 
+                    x=plot_data.index,
                     y=plot_data['LB'],
-                    mode='lines', 
+                    mode='lines',
                     name='下通道',
                     line=dict(color='#87CEFA', width=2),
                     hovertemplate='下通道: %{y:.2f}<extra></extra>'
@@ -373,8 +371,8 @@ if analyze_button:
                     zone_text = "目前處於：毅力區 (空頭) 🐻"
                     
                 fig2.update_layout(
-                    title=f"樂活通道走勢圖 - {zone_text}", 
-                    height=500, 
+                    title=f"樂活通道走勢圖 - {zone_text}",
+                    height=500,
                     hovermode='x unified',
                     template='plotly_white',
                     showlegend=True,
@@ -441,19 +439,21 @@ if analyze_button:
             
             with st.spinner("🧠 AI 分析中..."):
                 try:
-                    if ai_model == "ChatGPT (OpenAI)":
-                        client = OpenAI(api_key=api_key)
-                        response = client.chat.completions.create(
-                            model="gpt-4",
-                            messages=[{"role": "system", "content": "你是專業股市分析師。"}, {"role": "user", "content": prompt}],
-                            temperature=0.7
-                        )
-                        ai_response = response.choices[0].message.content
-                    else:
-                        genai.configure(api_key=api_key)
-                        model = genai.GenerativeModel('gemini-1.5-flash')
-                        response = model.generate_content(prompt)
-                        ai_response = response.text
+                    # 由於只剩下 ChatGPT 選項，我們可以直接運行其邏輯
+                    # if ai_model == "ChatGPT (OpenAI)":
+                    client = OpenAI(api_key=api_key)
+                    response = client.chat.completions.create(
+                        model="gpt-4",
+                        messages=[{"role": "system", "content": "你是專業股市分析師。"}, {"role": "user", "content": prompt}],
+                        temperature=0.7
+                    )
+                    ai_response = response.choices[0].message.content
+                    # 移除 Gemini 的 else 邏輯
+                    # else:
+                    #     genai.configure(api_key=api_key)
+                    #     model = genai.GenerativeModel('gemini-1.5-flash')
+                    #     response = model.generate_content(prompt)
+                    #     ai_response = response.text
                     
                     st.markdown(ai_response)
                 except Exception as e:
