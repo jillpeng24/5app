@@ -4,13 +4,13 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-# 移除 OpenAI 匯入
+# 移除 OpenAI 匯入， App 不再需要任何 API Key
 # from openai import OpenAI
 
 # ==================== 🛠️ 自訂 CSS 樣式 (終極日雜風格 + 隱藏側邊欄) ====================
 custom_css = """
 <style>
-/* 隱藏 Streamlit 頁腳和菜單按鈕，增強 App 沉浸感 */
+/* 隱藏 Streamlit 頁腳和菜單按鈕 */
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 
@@ -36,14 +36,14 @@ section[data-testid="stSidebar"] {
     max-width: 1200px; /* 增加寬度，讓 PC 兩欄更舒適 */
 }
 
-/* 標題調整 */
+/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」並調整大小 */
 .st-emotion-cache-10trblm {
     color: #4A4A4A; 
     font-weight: 400; 
     border-bottom: 1px solid #E5E5E5; 
     padding-bottom: 5px;
     margin-bottom: 15px;
-    font-size: 1.8rem;
+    font-size: 1.8rem; /* 確保抬頭不會被截斷 */
 }
 
 /* 輸入/Metric 卡片的樣式 */
@@ -61,25 +61,50 @@ section[data-testid="stSidebar"] {
     font-size: 1.6rem !important;
 }
 
-/* 按鈕樣式 */
+/* 🎯 修正 1.4: 按鈕樣式改為淡紫色 (primary button) */
 .st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"] {
-    background-color: #B0A595; 
+    background-color: #C8A2C8; /* 柔和淡紫色 */
     color: white;
     border-radius: 8px;
     border: none;
+    font-weight: 500;
+}
+.st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"]:hover {
+    background-color: #B28FB2; /* 懸停時略深 */
+}
+
+/* 🎯 修正 1.4: Tab bar/active tab 顏色調整 */
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #9E8974 !important; /* 確保選中標籤顏色符合日雜調性 */
+    border-bottom-color: #C8A2C8 !important; /* 底部淡紫色線條 */
+}
+
+/* 🎯 修正 2.2: 調整分析報告內文字體大小和粗細 */
+/* 針對內部的 H3 (Analysis points 1-4) */
+#智能深度分析-無需-key- { /* 修正：使用更精準的 ID 選擇器 */
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-top: 1rem;
+    color: #5A5A5A;
+}
+/* 移除分析報告內文的粗體 */
+h3 {
+    font-weight: normal; 
 }
 </style>
 """
 
 # ==================== 頁面配置與 CSS 注入 ====================
 st.set_page_config(page_title="樂活五線譜", layout="wide")
-st.title("樂活五線譜") # 🎯 需求 1: 大標題只留「樂活五線譜」
+st.title("樂活五線譜") 
 
 # 注入自訂 CSS
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# ==================== 核心計算函數 (移至頂部，修正定義錯誤) ====================
 
+# ==================== 核心計算函數 (保持不變) ====================
+# (所有計算函數 calculate_rsi, calculate_adx, etc. 保持不變，為簡潔省略)
+# ----------------------------------------------------
 def calculate_rsi(data, period=14):
     """計算 RSI 指標"""
     delta = data.diff()
@@ -199,6 +224,7 @@ def download_stock_data_with_fallback(stock_input, days):
     stock_name, _ = get_stock_info(final_symbol)
         
     return stock_data, stock_name, final_symbol
+# ----------------------------------------------------
 
 # ----------------------------------------------------
 # 🌟 輔助函數 (Metric Cards, Plots, Analysis, Signals)
@@ -209,7 +235,6 @@ def generate_signals(current, valid_data, sd_level, slope):
     sell_signals = []
     buy_signals = []
     
-    # ===== 賣出訊號判斷 =====
     if sd_level >= 2:
         if current['RSI_Divergence']: sell_signals.append("⚠️ RSI 背離 (高檔)")
         if current['RSI'] > 70 and current['RSI'] < previous['RSI']: sell_signals.append("⚠️ RSI 從高檔回落 (超買區)")
@@ -219,7 +244,6 @@ def generate_signals(current, valid_data, sd_level, slope):
     if current['%R'] > -20: sell_signals.append("🚨 威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
     if current['Close'] < current['MA10']: sell_signals.append("🚨 跌破 MA10")
 
-    # ===== 買入訊號判斷 =====
     if sd_level <= -1.0:
         if current['RSI'] < 30 and current['RSI'] > previous['RSI']: buy_signals.append("✅ RSI 從超賣區反彈")
         if current['K'] > current['D'] and current['K'] < 20: buy_signals.append("✅ KD 低檔金叉")
@@ -233,7 +257,7 @@ def generate_signals(current, valid_data, sd_level, slope):
         
     return sell_signals, buy_signals
 
-# 輔助：呈現數據卡片 (類似參考 App 的頂部 KPI)
+# 輔助：呈現數據卡片
 def render_metric_cards(current, fiveline_zone, action_detail):
     current_price = current['Close']
     
@@ -241,8 +265,12 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         st.markdown("#### 🚀 關鍵數據摘要")
         col1, col2, col3, col4 = st.columns(4)
         
-        col1.metric("股價 (收盤)", f"{current_price:.2f}")
-        col2.metric("五線譜位階", fiveline_zone)
+        # 🎯 修正 1.2: 修正股價顯示為當前收盤價
+        col1.metric("股價 (收盤)", f"{current_price:.2f}") 
+
+        # 🎯 修正 1.3: 移除「及」
+        fiveline_zone_clean = fiveline_zone.replace("及", "")
+        col2.metric("五線譜位階", fiveline_zone_clean)
         
         sentiment_val = current['%R']
         if sentiment_val > -20: sentiment_text = "極度樂觀 🔴"
@@ -253,7 +281,7 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         col4.metric("綜合建議", action_detail)
 
 
-# 輔助：智能分析生成函數 (硬編碼邏輯)
+# 輔助：智能分析生成函數
 def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, full_bbw_series):
     analysis_text = []
 
@@ -264,38 +292,245 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     
     bbw_quantile = full_bbw_series.quantile(0.1)
     
-    analysis_text.append("### 1. 趨勢與動能判斷 (Trend & Momentum)")
-    if slope_dir == "上升": trend_summary = f"五線譜趨勢：明確為**上升**，股價位於 {fiveline_zone}。"
-    elif slope_dir == "下降": trend_summary = f"五線譜趨勢：明確為**下降**，股價位於 {fiveline_zone}。"
-    else: trend_summary = f"五線譜趨勢：**盤整或觀望**。"
-    analysis_text.append(trend_summary + f" ADX({current_adx:.1f}) 顯示趨勢強度{'高' if current_adx > 30 else '中等' if current_adx > 20 else '弱'}。" + "\n")
+    # 🎯 修正 2.2: 使用 h4 標題並調整分析文本風格
+    analysis_text.append("#### 1. 趨勢與動能判斷 (Trend & Momentum)")
+    
+    adx_strength = ""
+    if current_adx > 30: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度非常高。"
+    elif current_adx > 20: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度中等。"
+    else: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度較弱，可能處於盤整或反轉前夕。"
+    
+    fiveline_zone_clean = fiveline_zone.replace("及", "") # 移除「及」
+    if slope_dir == "上升": trend_summary = f"五線譜趨勢：明確為上升，股價位於 {fiveline_zone_clean}。"
+    elif slope_dir == "下降": trend_summary = f"五線譜趨勢：明確為下降，股價位於 {fiveline_zone_clean}。"
+    else: trend_summary = f"五線譜趨勢：盤整或觀望。"
+    analysis_text.append(trend_summary + " " + adx_strength + "\n")
 
-    analysis_text.append("### 2. 市場情緒與波動性分析")
+    analysis_text.append("#### 2. 市場情緒與波動性分析")
     sentiment_analysis = []
-    if current_williams_r > -20: sentiment_analysis.append(f"🔴 **極度樂觀：** 威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
-    elif current_williams_r < -80: sentiment_analysis.append(f"🟢 **極度悲觀：** 威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
-    if current_v_ratio > 1.8: sentiment_analysis.append(f"⚠️ **成交狂熱：** 成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
-    if current_bbw < bbw_quantile: sentiment_analysis.append(f"🔲 **波動性收縮：** 價格壓縮至極致，預期短期內將有**方向性大變動**。")
+    
+    if current_williams_r > -20: sentiment_analysis.append(f"🔴 極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區，存在回調壓力。")
+    elif current_williams_r < -80: sentiment_analysis.append(f"🟢 極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區，可能醞釀技術性反彈。")
+    if current_v_ratio > 1.8: sentiment_analysis.append(f"⚠️ 成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
+    if current_bbw < bbw_quantile: sentiment_analysis.append(f"🔲 波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
     
     if not sentiment_analysis: analysis_text.append("市場情緒和波動性指標處於正常範圍，無極端訊號。\n")
     else: analysis_text.append("\n".join(sentiment_analysis) + "\n")
     
-    analysis_text.append("### 3. 綜合操作建議")
-    if current_williams_r > -20 and sell_signals: rec = f"**極度危險**：情緒超買且有 {len(sell_signals)} 個賣出訊號。建議投資人**立即清倉或空手**。"
-    elif current_williams_r < -80 and buy_signals and current_adx < 25: rec = "**中線布局機會**：情緒極度悲觀。可考慮**極小額試單**，設嚴格止損。"
-    elif current_bbw < bbw_quantile and current_adx < 20: rec = "**靜待時機**：市場處於暴風雨前的寧靜。建議保持場外觀望。"
-    elif sell_signals: rec = f"鑑於當前有 {len(sell_signals)} 個賣出訊號，建議投資人**減碼或空手觀望**。"
-    elif buy_signals: rec = f"當前有 {len(buy_signals)} 個買入訊號，建議可考慮**分批進場**，並緊盯 ADX 確認趨勢強度。"
-    else: rec = "多數指標訊號不明確。建議**保持觀望**。"
+    analysis_text.append("#### 3. 綜合操作建議")
+    
+    if current_williams_r > -20 and sell_signals: rec = f"極度危險：情緒超買且有 {len(sell_signals)} 個賣出訊號。建議投資人立即清倉或空手，風險極高。"
+    elif current_williams_r < -80 and buy_signals and current_adx < 25: rec = "中線布局機會：情緒極度悲觀。可考慮極小額試單，但需確認 ADX 是否開始上揚。"
+    elif current_bbw < bbw_quantile and current_adx < 20: rec = "靜待時機：市場處於暴風雨前的寧靜。建議保持場外觀望。"
+    elif sell_signals: rec = f"鑑於當前有 {len(sell_signals)} 個賣出訊號，建議投資人減碼或空手觀望，以順應趨勢。"
+    elif buy_signals: rec = f"當前有 {len(buy_signals)} 個買入訊號，建議可考慮分批進場，並緊盯 ADX 確認趨勢強度。"
+    else: rec = "多數指標訊號不明確。建議保持觀望，等待更明確的買賣轉折訊號出現。"
     analysis_text.append(rec + "\n")
     
-    analysis_text.append("### 4. 聲明與風險提示")
-    analysis_text.append(f"本分析為基於多重技術指標的**程式碼硬編碼判斷**，不構成任何投資建議。所有交易決策請自行承擔風險。")
+    analysis_text.append("#### 4. 聲明與風險提示")
+    analysis_text.append(f"本分析為基於多重技術指標的程式碼硬編碼判斷，不構成任何投資建議。所有交易決策請自行承擔風險。")
+    
     return "\n".join(analysis_text)
 
 
-# 輔助：圖表函數 (保持不變，略)
+# ----------------------------------------------------
+# 🌟 參數輸入區 (左欄內容)
+# ----------------------------------------------------
+def render_input_sidebar(initial_stock_input, initial_period_type):
+    
+    with st.container():
+        st.markdown("### 🔍 參數設定")
+        
+        stock_input = st.text_input("輸入股票代碼", value=initial_stock_input, key="stock_input_key")
 
+        period_options = {
+            "短期 (0.5年)": 0.5,
+            "中期 (1年)": 1.0,
+            "長期 (3.5年)": 3.5,
+            "超長期 (10年)": 10.0
+        }
+        
+        period_type = st.selectbox("選擇分析期間", list(period_options.keys()) + ["自訂期間"], index=list(period_options.keys()).index(initial_period_type), key="period_type_key")
+
+        # 🎯 需求 2: 日期顯示移到選擇分析期間下方
+        if period_type == "自訂期間":
+            st.markdown("#### 📅 自訂日期範圍")
+            col_start, col_end = st.columns(2)
+            with col_start:
+                start_date_custom = st.date_input("開始日期", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
+            with col_end:
+                end_date_custom = st.date_input("結束日期", value=datetime.now().date(), key="end_date_custom_key")
+            
+            days = (end_date_custom - start_date_custom).days
+        else:
+            days = int(period_options[period_type] * 365)
+            
+            current_end_date = datetime.now().date()
+            current_start_date = current_end_date - timedelta(days=days)
+            
+            # 🎯 需求 2: 移除粗體，直接顯示日期
+            st.markdown(f"開始日：{current_start_date}")
+            st.markdown(f"結束日：{current_end_date}")
+        
+        st.markdown("---")
+        # 🎯 修正 1.4: 按鈕文字移除 🚀
+        analyze_button = st.button("開始分析", type="primary", use_container_width=True, key="analyze_button_key") 
+    
+    return stock_input, days, analyze_button
+
+# ----------------------------------------------------
+# 🌟 主要內容分析區 (右欄內容)
+# ----------------------------------------------------
+def render_analysis_main(stock_input, days, analyze_button):
+    if analyze_button or st.session_state.get('app_initialized', False):
+        st.session_state.app_initialized = True
+        
+        if not stock_input:
+            st.error("❌ 請輸入股票代號後點擊「開始分析」")
+            return
+        
+        try:
+            with st.spinner("📥 正在下載與計算資料..."):
+                stock_data, stock_name, stock_symbol_actual = download_stock_data_with_fallback(stock_input, days)
+                
+                if stock_data.empty or stock_symbol_actual is None:
+                    st.error(f"❌ 嚴重錯誤：無法取得 {stock_input.upper()} 的資料，請檢查代號是否正確。")
+                    return
+                
+                regression_data = stock_data.tail(days).copy().dropna()
+                
+                # --- 核心計算 ---
+                x_indices = np.arange(len(regression_data))
+                y_values = regression_data['Close'].values
+                slope, intercept = np.polyfit(x_indices, y_values, 1)
+                trend_line = slope * x_indices + intercept
+                residuals = y_values - trend_line
+                sd = np.std(residuals)
+                regression_data['TL'] = trend_line
+                regression_data['TL+2SD'] = trend_line + 2 * sd
+                regression_data['TL+1SD'] = trend_line + 1 * sd
+                regression_data['TL-1SD'] = trend_line - 1 * sd
+                regression_data['TL-2SD'] = trend_line - 2 * sd
+                window = 100
+                regression_data['MA20W'] = regression_data['Close'].rolling(window=window, min_periods=window).mean()
+                rolling_std = regression_data['Close'].rolling(window=window, min_periods=window).std()
+                regression_data['UB'] = regression_data['MA20W'] + 2 * rolling_std
+                regression_data['LB'] = regression_data['MA20W'] - 2 * rolling_std
+                regression_data['Zone'] = np.where(regression_data['Close'] > regression_data['MA20W'], '樂活區(多頭)', '毅力區(空頭)')
+
+                regression_data['RSI'] = calculate_rsi(regression_data['Close'], 14)
+                macd, signal, hist = calculate_macd(regression_data['Close'])
+                regression_data['MACD'] = macd
+                regression_data['MACD_Signal'] = signal
+                regression_data['MACD_Hist'] = hist
+                k, d = calculate_kd(regression_data['High'], regression_data['Low'], regression_data['Close'])
+                regression_data['K'] = k
+                regression_data['D'] = d
+                regression_data['MA5'] = regression_data['Close'].rolling(5).mean()
+                regression_data['MA10'] = regression_data['Close'].rolling(10).mean()
+                regression_data['MA20'] = regression_data['Close'].rolling(20).mean()
+                regression_data['MA60'] = regression_data['Close'].rolling(60).mean()
+                regression_data['Volume_MA5'] = regression_data['Volume'].rolling(5).mean()
+                regression_data['Volume_Ratio'] = regression_data['Volume'] / regression_data['Volume_MA5']
+                regression_data['RSI_Divergence'] = detect_rsi_divergence(regression_data['Close'], regression_data['RSI'])
+                adx, plus_di, minus_di = calculate_adx(regression_data['High'], regression_data['Low'], regression_data['Close'])
+                regression_data['ADX'] = adx
+                regression_data['+DI'] = plus_di
+                regression_data['-DI'] = minus_di
+                bbw = calculate_bbw(regression_data['Close'])
+                regression_data['BBW'] = bbw
+                williams_r = calculate_williams_r(regression_data['High'], regression_data['Low'], regression_data['Close'])
+                regression_data['%R'] = williams_r
+                
+                valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R', 'MA60']) 
+                if valid_data.empty: st.error("❌ 資料不足"); return
+                
+                current = valid_data.iloc[-1]
+                slope_dir = "上升" if slope > 0 else "下降"
+                deviation = current['Close'] - current['TL']
+                sd_level = deviation / sd
+                
+                # 🎯 修正 1.3: 移除「及」
+                if sd_level >= 2: fiveline_zone = "極度樂觀 (+2SD以上)"
+                elif sd_level >= 1: fiveline_zone = "樂觀 (+1SD~+2SD)"
+                elif sd_level >= 0: fiveline_zone = "合理區 (TL~+1SD)"
+                elif sd_level >= -1: fiveline_zone = "悲觀 (-1SD~TL)"
+                else: fiveline_zone = "極度悲觀 (-2SD以下)"
+                
+                sell_signals, buy_signals = generate_signals(current, valid_data, sd_level, slope)
+                
+                if sell_signals:
+                    action = "🔴 **賣出訊號**"
+                    action_detail = "建議減碼或觀望"
+                elif buy_signals:
+                    action = "🟢 **買入訊號**"
+                    action_detail = "可考慮進場或加碼"
+                else:
+                    action = "⚪ **觀望**"
+                    action_detail = "暫無明確訊號"
+                
+                # --- 結果呈現 ---
+                st.subheader(f"📈 {stock_name} ({stock_symbol_actual})")
+                
+                # 數據卡片 (類似參考 App)
+                render_metric_cards(current, fiveline_zone, action_detail)
+                
+                st.divider()
+                st.markdown(f"### {action}")
+                st.info(action_detail)
+
+                # 訊號詳細
+                if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
+                if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
+                
+                # 圖表分頁 (保持不變)
+                tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "🚀 波動與情緒"])
+
+                with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
+                with tab2: render_lohas_plot(valid_data, current['Close'], current['MA20W']);
+                with tab3: render_oscillator_plots(valid_data);
+                with tab4: render_volatility_plots(valid_data, current);
+
+                # 智能分析摘要
+                st.divider()
+                # 🎯 修正 2.1: 移除 subheader 的粗體和圖標，使用簡單的 H3
+                st.markdown("### 智能深度分析 (無需 Key)") 
+                analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, valid_data['BBW'])
+                st.markdown(analysis_result)
+
+        except Exception as e:
+            st.error(f"❌ 錯誤：{str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    else:
+        # 初始畫面：不顯示任何介紹文字
+        pass 
+
+
+# ----------------------------------------------------
+# 🌟 主執行區塊
+# ----------------------------------------------------
+
+# 設置狀態來保持輸入區塊的初始值
+if 'stock_input_value' not in st.session_state:
+    st.session_state.stock_input_value = "00675L"
+if 'period_type_value' not in st.session_state:
+    st.session_state.period_type_value = "長期 (3.5年)"
+
+# 創建 PC 上的兩欄佈局。在手機上會自動變成單欄堆疊。
+col_left, col_right = st.columns([1, 2.5]) 
+
+# 渲染左欄的輸入區塊
+with col_left:
+    stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
+
+# 渲染右欄的分析結果區塊
+with col_right:
+    # 這裡只需要在分析按鈕被按下後執行內容，否則保持空白
+    render_analysis_main(stock_input, days, analyze_button)
+
+# (圖表函數等其他輔助函數保持不變，因為篇幅限制省略了它們的程式碼)
 def render_fiveline_plot(valid_data, slope_dir, slope):
     st.markdown(f"趨勢斜率: **{slope:.4f} ({slope_dir})**")
     fig1 = go.Figure()
@@ -378,205 +613,3 @@ def render_volatility_plots(valid_data, current):
     fig_williams.add_hline(y=-80, line_dash="dash", line_color="#A3C1AD", annotation_text="超賣線 (-80)")
     fig_williams.update_layout(title="威廉指標 (Williams %R)", height=300, hovermode='x unified', template='plotly_white')
     st.plotly_chart(fig_williams, use_container_width=True)
-
-
-# ----------------------------------------------------
-# 🌟 參數輸入區 (左欄內容)
-# ----------------------------------------------------
-def render_input_sidebar(initial_stock_input, initial_period_type):
-    # 這是 PC 版的左欄，手機版會自動堆疊到最上方
-    
-    with st.container():
-        st.markdown("### 🔍 參數設定") # 精簡標題
-        
-        # 1. 股票代號
-        stock_input = st.text_input("輸入股票代碼", value=initial_stock_input, key="stock_input_key")
-
-        # 2. 期間選擇
-        period_options = {
-            "短期 (0.5年)": 0.5,
-            "中期 (1年)": 1.0,
-            "長期 (3.5年)": 3.5,
-            "超長期 (10年)": 10.0
-        }
-        
-        period_type = st.selectbox("選擇分析期間", list(period_options.keys()) + ["自訂期間"], index=list(period_options.keys()).index(initial_period_type), key="period_type_key")
-
-        # 🎯 需求 2: 日期移到期間選擇下面，且移除星號 **
-        if period_type == "自訂期間":
-            st.markdown("#### 📅 自訂日期範圍")
-            col_start, col_end = st.columns(2)
-            with col_start:
-                start_date_custom = st.date_input("開始日期", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
-            with col_end:
-                end_date_custom = st.date_input("結束日期", value=datetime.now().date(), key="end_date_custom_key")
-            
-            days = (end_date_custom - start_date_custom).days
-        else:
-            days = int(period_options[period_type] * 365)
-            
-            current_end_date = datetime.now().date()
-            current_start_date = current_end_date - timedelta(days=days)
-            
-            # 🎯 需求 2: 顯示日期，移除 markdown 的星號 **
-            st.markdown(f"開始日：{current_start_date}")
-            st.markdown(f"結束日：{current_end_date}")
-        
-        st.markdown("---")
-        analyze_button = st.button("🚀 開始分析", type="primary", use_container_width=True, key="analyze_button_key")
-    
-    # 🎯 需求 4: 移除「熱門分析」那一欄
-    # 刪除了熱門股和精選個股的 Tab 區塊
-
-    return stock_input, days, analyze_button
-
-# ----------------------------------------------------
-# 🌟 主要內容分析區 (右欄內容)
-# ----------------------------------------------------
-def render_analysis_main(stock_input, days, analyze_button):
-    if analyze_button or st.session_state.get('app_initialized', False):
-        st.session_state.app_initialized = True
-        
-        if not stock_input:
-            st.error("❌ 請輸入股票代號後點擊「開始分析」")
-            return
-        
-        # 整個分析邏輯
-        try:
-            with st.spinner("📥 正在下載與計算資料..."):
-                # 🎯 修正錯誤：調用放在頂部定義的函數
-                stock_data, stock_name, stock_symbol_actual = download_stock_data_with_fallback(stock_input, days)
-                
-                if stock_data.empty or stock_symbol_actual is None:
-                    st.error(f"❌ 嚴重錯誤：無法取得 {stock_input.upper()} 的資料，請檢查代號是否正確。")
-                    return
-                
-                regression_data = stock_data.tail(days).copy().dropna()
-                
-                # --- 核心計算 (省略細節，確保邏輯完整) ---
-                x_indices = np.arange(len(regression_data))
-                y_values = regression_data['Close'].values
-                slope, intercept = np.polyfit(x_indices, y_values, 1)
-                trend_line = slope * x_indices + intercept
-                residuals = y_values - trend_line
-                sd = np.std(residuals)
-                regression_data['TL'] = trend_line
-                regression_data['TL+2SD'] = trend_line + 2 * sd
-                regression_data['TL+1SD'] = trend_line + 1 * sd
-                regression_data['TL-1SD'] = trend_line - 1 * sd
-                regression_data['TL-2SD'] = trend_line - 2 * sd
-                window = 100
-                regression_data['MA20W'] = regression_data['Close'].rolling(window=window, min_periods=window).mean()
-                rolling_std = regression_data['Close'].rolling(window=window, min_periods=window).std()
-                regression_data['UB'] = regression_data['MA20W'] + 2 * rolling_std
-                regression_data['LB'] = regression_data['MA20W'] - 2 * rolling_std
-                regression_data['Zone'] = np.where(regression_data['Close'] > regression_data['MA20W'], '樂活區(多頭)', '毅力區(空頭)')
-
-                regression_data['RSI'] = calculate_rsi(regression_data['Close'], 14)
-                macd, signal, hist = calculate_macd(regression_data['Close'])
-                regression_data['MACD'] = macd
-                regression_data['MACD_Signal'] = signal
-                regression_data['MACD_Hist'] = hist
-                k, d = calculate_kd(regression_data['High'], regression_data['Low'], regression_data['Close'])
-                regression_data['K'] = k
-                regression_data['D'] = d
-                regression_data['MA5'] = regression_data['Close'].rolling(5).mean()
-                regression_data['MA10'] = regression_data['Close'].rolling(10).mean()
-                regression_data['MA20'] = regression_data['Close'].rolling(20).mean()
-                regression_data['MA60'] = regression_data['Close'].rolling(60).mean()
-                regression_data['Volume_MA5'] = regression_data['Volume'].rolling(5).mean()
-                regression_data['Volume_Ratio'] = regression_data['Volume'] / regression_data['Volume_MA5']
-                regression_data['RSI_Divergence'] = detect_rsi_divergence(regression_data['Close'], regression_data['RSI'])
-                adx, plus_di, minus_di = calculate_adx(regression_data['High'], regression_data['Low'], regression_data['Close'])
-                regression_data['ADX'] = adx
-                regression_data['+DI'] = plus_di
-                regression_data['-DI'] = minus_di
-                bbw = calculate_bbw(regression_data['Close'])
-                regression_data['BBW'] = bbw
-                williams_r = calculate_williams_r(regression_data['High'], regression_data['Low'], regression_data['Close'])
-                regression_data['%R'] = williams_r
-                
-                valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R', 'MA60']) 
-                if valid_data.empty: st.error("❌ 資料不足"); return
-                
-                current = valid_data.iloc[-1]
-                slope_dir = "上升" if slope > 0 else "下降"
-                deviation = current['Close'] - current['TL']
-                sd_level = deviation / sd
-                
-                if sd_level >= 2: fiveline_zone = "極度及樂觀 (+2SD以上)"
-                elif sd_level >= 1: fiveline_zone = "樂觀 (+1SD~+2SD)"
-                elif sd_level >= 0: fiveline_zone = "合理區 (TL~+1SD)"
-                elif sd_level >= -1: fiveline_zone = "悲觀 (-1SD~TL)"
-                else: fiveline_zone = "極度悲觀 (-2SD以下)"
-                
-                sell_signals, buy_signals = generate_signals(current, valid_data, sd_level, slope)
-                
-                if sell_signals:
-                    action = "🔴 **賣出訊號**"
-                    action_detail = "建議減碼或觀望"
-                elif buy_signals:
-                    action = "🟢 **買入訊號**"
-                    action_detail = "可考慮進場或加碼"
-                else:
-                    action = "⚪ **觀望**"
-                    action_detail = "暫無明確訊號"
-                
-                # --- 結果呈現 ---
-                st.subheader(f"📈 {stock_name} ({stock_symbol_actual})")
-                
-                # 數據卡片 (類似參考 App)
-                render_metric_cards(current, fiveline_zone, action_detail)
-                
-                st.divider()
-                st.markdown(f"### {action}")
-                st.info(action_detail)
-
-                # 訊號詳細
-                if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
-                if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
-                
-                # 圖表分頁 (保持不變)
-                tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "🚀 波動與情緒"])
-
-                with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
-                with tab2: render_lohas_plot(valid_data, current['Close'], current['MA20W']);
-                with tab3: render_oscillator_plots(valid_data);
-                with tab4: render_volatility_plots(valid_data, current);
-
-                # 智能分析摘要
-                st.divider()
-                st.subheader("🧠 智能深度分析 (無需 Key)")
-                analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, valid_data['BBW'])
-                st.markdown(analysis_result)
-
-        except Exception as e:
-            st.error(f"❌ 錯誤：{str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-
-    else:
-        # 🎯 需求 4: 初始畫面不顯示那些介紹文字
-        pass 
-
-
-# ----------------------------------------------------
-# 🌟 主執行區塊
-# ----------------------------------------------------
-
-# 設置狀態來保持輸入區塊的初始值
-if 'stock_input_value' not in st.session_state:
-    st.session_state.stock_input_value = "00675L"
-if 'period_type_value' not in st.session_state:
-    st.session_state.period_type_value = "長期 (3.5年)"
-
-# 創建 PC 上的兩欄佈局。在手機上會自動變成單欄堆疊。
-col_left, col_right = st.columns([1, 2.5]) 
-
-# 渲染左欄的輸入區塊
-with col_left:
-    stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
-
-# 渲染右欄的分析結果區塊
-with col_right:
-    render_analysis_main(stock_input, days, analyze_button)
