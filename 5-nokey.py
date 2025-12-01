@@ -1,3 +1,4 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -426,6 +427,7 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
             st.markdown("#### 📅 自訂日期範圍")
             col_start, col_end = st.columns(2)
             with col_start:
+                # 修正日期顯示問題：確保傳入的是 date 物件
                 start_date_custom = st.date_input("開始日期", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
             with col_end:
                 end_date_custom = st.date_input("結束日期", value=datetime.now().date(), key="end_date_custom_key")
@@ -461,7 +463,6 @@ def render_analysis_main(stock_input, days, analyze_button):
         
         try:
             with st.spinner("📥 正在下載與計算資料..."):
-                # 呼叫放在頂部定義的函數
                 stock_data, stock_name, stock_symbol_actual = download_stock_data_with_fallback(stock_input, days)
                 
                 if stock_data.empty or stock_symbol_actual is None:
@@ -470,7 +471,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 
                 regression_data = stock_data.tail(days).copy().dropna()
                 
-                # --- 核心計算 (確保所有函數在調用前已定義) ---
+                # --- 核心計算 ---
                 x_indices = np.arange(len(regression_data))
                 y_values = regression_data['Close'].values
                 slope, intercept = np.polyfit(x_indices, y_values, 1)
@@ -594,4 +595,5 @@ with col_left:
 
 # 渲染右欄的分析結果區塊
 with col_right:
+    # 這裡只需要在分析按鈕被按下後執行內容，否則保持空白
     render_analysis_main(stock_input, days, analyze_button)
