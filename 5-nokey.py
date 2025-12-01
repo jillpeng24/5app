@@ -175,8 +175,8 @@ def calculate_adx(high, low, close, period=14):
     df = pd.DataFrame({'High': high, 'Low': low, 'Close': close})
     
     # 1. 計算 True Range (TR)
-    df['TR'] = np.maximum.reduce([df['High'] - df['Low'],
-                                  abs(df['High'] - df['Close'].shift(1)),
+    df['TR'] = np.maximum.reduce([df['High'] - df['Low'], 
+                                  abs(df['High'] - df['Close'].shift(1)), 
                                   abs(df['Low'] - df['Close'].shift(1))])
     
     # 2. 計算 Directional Movement (+DM, -DM)
@@ -191,14 +191,14 @@ def calculate_adx(high, low, close, period=14):
     alpha = 1/period
     df['ATR'] = df['TR'].ewm(alpha=alpha, adjust=False).mean()
     df['+DMI'] = df['+DM'].ewm(alpha=alpha, adjust=False).mean()
-    df[' -DMI'] = df['-DM'].ewm(alpha=alpha, adjust=False).mean() # 修正列名
+    df['-DMI'] = df['-DM'].ewm(alpha=alpha, adjust=False).mean()
     
     # 4. 計算 Directional Index (DI)
+    # 修正列名錯誤 (原程式碼有錯字 -DMI)
     df['+DI'] = (df['+DMI'] / df['ATR']) * 100
-    df['-DI'] = (df[' -DMI'] / df['ATR']) * 100 # 使用修正後的列名
+    df['-DI'] = (df['-DMI'] / df['ATR']) * 100
     
     # 5. 計算 Directional Movement Index (DX)
-    # 避免除以零
     sum_di = df['+DI'] + df['-DI']
     df['DX'] = (abs(df['+DI'] - df['-DI']) / sum_di.replace(0, np.nan)) * 100
     
@@ -241,7 +241,7 @@ def get_stock_info(symbol):
     except:
         return symbol, symbol
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600) 
 def download_stock_data_with_fallback(stock_input, days):
     """
     下載股票資料並嘗試 .TW 和 .TWO 備援。
@@ -321,7 +321,7 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     sentiment_analysis = []
     
     # 2.1 威廉指標 (%R) 判斷極端情緒
-    if current_williams_r > -20:
+    if current_williams_r > -20: 
         sentiment_analysis.append(f"🔴 **極度樂觀：** 威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區，市場情緒過熱，存在回調壓力。")
     elif current_williams_r < -80:
         sentiment_analysis.append(f"🟢 **極度悲觀：** 威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區，市場情緒偏向恐慌，可能醞釀技術性反彈。")
@@ -332,7 +332,7 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     
     # 2.3 BBW 判斷收縮
     bbw_quantile = current['BBW'].quantile(0.1)
-    if current_bbw < bbw_quantile:
+    if current_bbw < bbw_quantile: 
         sentiment_analysis.append(f"🔲 **波動性收縮：** 價格壓縮至極致，預期短期內將有**方向性大變動**。")
     
     if not sentiment_analysis:
@@ -492,7 +492,7 @@ if analyze_button:
                 if current['Volume_Ratio'] > 2.0 and (current['Close'] - current['Open']) / current['Open'] < 0.005:
                     sell_signals.append("⚠️ 爆量滯漲 (V-Ratio > 2.0)")
                 # 4. 威廉指標極度超買
-                if current['%R'] > -20:
+                if current['%R'] > -20: 
                     sell_signals.append("🚨 威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
                 # 5. 跌破均線
                 if current['Close'] < current['MA10']:
@@ -511,7 +511,7 @@ if analyze_button:
                 if current['+DI'] > current['-DI'] and current['ADX'] > 25:
                     buy_signals.append("✅ DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
                 # 3. 波動性收縮
-                if current['BBW'] < current['BBW'].quantile(0.1):
+                if current['BBW'] < current['BBW'].quantile(0.1): 
                     buy_signals.append("⚠️ BBW 波動性極端收縮 (潛在爆發點)")
                 # 4. 威廉指標極度超賣
                 if current['%R'] < -80:
@@ -567,11 +567,11 @@ if analyze_button:
                 st.markdown(f"趨勢斜率: **{slope:.4f} ({slope_dir})**")
                 fig1 = go.Figure()
                 fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+2SD'], mode='lines', name='TL+2SD', line=dict(color='#C8A2C8', width=2)))
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+2SD'], mode='lines', name='TL+2SD', line=dict(color='#C8A2C8', width=2))) 
                 fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL+1SD'], mode='lines', name='TL+1SD', line=dict(color='#DDA0DD', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#B0A595', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#A3C1AD', width=2)))
-                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#8FBC8F', width=2)))
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#B0A595', width=2))) 
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#A3C1AD', width=2))) 
+                fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#8FBC8F', width=2))) 
                 fig1.update_layout(title="五線譜走勢圖", height=500, hovermode='x unified', template='plotly_white')
                 st.plotly_chart(fig1, use_container_width=True)
             
@@ -632,7 +632,7 @@ if analyze_button:
                 
                 fig_ma = go.Figure()
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#4A4A4A', width=2)))
-                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF8C66', width=1.5)))
+                fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA5'], mode='lines', name='MA5', line=dict(color='#FF8C66', width=1.5))) 
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA10'], mode='lines', name='MA10', line=dict(color='#C8A2C8', width=1.5)))
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA20'], mode='lines', name='MA20', line=dict(color='#B0A595', width=1.5)))
                 fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['MA60'], mode='lines', name='MA60', line=dict(color='#A3C1AD', width=1.5)))
@@ -670,4 +670,67 @@ if analyze_button:
                 fig_adx.add_trace(go.Scatter(x=valid_data.index, y=valid_data['+DI'], mode='lines', name='+DI (多頭)', line=dict(color='#A3C1AD', width=1.5)))
                 fig_adx.add_trace(go.Scatter(x=valid_data.index, y=valid_data['-DI'], mode='lines', name='-DI (空頭)', line=dict(color='#DDA0DD', width=1.5)))
                 fig_adx.add_hline(y=25, line_dash="dash", line_color="#4A4A4A", annotation_text="趨勢強弱分界線 (25)")
-                fig_adx.update_layout(title="趨向指標 ADX
+                fig_adx.update_layout(title="趨向指標 ADX, +DI, -DI", height=300, hovermode='x unified', template='plotly_white')
+                st.plotly_chart(fig_adx, use_container_width=True)
+                
+                # 繪製 BBW
+                fig_bbw = go.Figure()
+                fig_bbw.add_trace(go.Scatter(x=valid_data.index, y=valid_data['BBW'] * 100, mode='lines', name='BBW %', line=dict(color='#FF8C66', width=2)))
+                bbw_low_quantile = valid_data['BBW'].quantile(0.1) * 100
+                fig_bbw.add_hline(y=bbw_low_quantile, line_dash="dash", line_color="#4A4A4A", annotation_text=f"歷史低點 ({bbw_low_quantile:.2f}%)")
+                fig_bbw.update_layout(title="布林帶寬度 (BBW)", height=300, hovermode='x unified', template='plotly_white', yaxis_title="BBW (%)")
+                st.plotly_chart(fig_bbw, use_container_width=True)
+
+                # 繪製 Williams %R
+                fig_williams = go.Figure()
+                fig_williams.add_trace(go.Scatter(x=valid_data.index, y=valid_data['%R'], mode='lines', name='Williams %R', line=dict(color='#C8A2C8', width=2)))
+                fig_williams.add_hline(y=-20, line_dash="dash", line_color="#FF8C66", annotation_text="超買線 (-20)")
+                fig_williams.add_hline(y=-80, line_dash="dash", line_color="#A3C1AD", annotation_text="超賣線 (-80)")
+                fig_williams.update_layout(title="威廉指標 (Williams %R)", height=300, hovermode='x unified', template='plotly_white')
+                st.plotly_chart(fig_williams, use_container_width=True)
+
+            
+            # ==================== 智能分析摘要 (方案 B - 零 Key) ====================
+            st.divider()
+            st.subheader("🧠 智能深度分析 (無需 Key)")
+            
+            with st.spinner("🧠 智能分析生成中..."):
+                analysis_result = generate_internal_analysis(
+                    stock_name, 
+                    stock_symbol_actual, 
+                    slope_dir, 
+                    sd_level, 
+                    fiveline_zone, 
+                    current, 
+                    sell_signals, 
+                    buy_signals
+                )
+                st.markdown(analysis_result)
+        
+        except Exception as e:
+            st.error(f"❌ 錯誤：{str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+else:
+    st.info("👈 請設定參數後點擊「開始分析」")
+    st.markdown("""
+    ### 🎯 智能交易系統特色
+    
+    **五線譜分析**
+    - 價值位階判斷（昂貴/合理/便宜）
+    - 趨勢線斜率分析
+    
+    **樂活通道**
+    - 布林通道上下軌
+    - 20週移動平均生命線
+    
+    **智能訊號 (新增)**
+    - ✅ 趨向指標 (ADX, DMI) 判斷趨勢強度和多空轉換
+    - ✅ 布林帶寬度 (BBW) 偵測波動性收縮（爆發點）
+    - ✅ 威廉指標 (%R) 捕捉極端市場情緒
+    - ✅ RSI, MACD, KD, 量價關係
+    
+    **Python 內部分析 (零 Key)**
+    - 整合所有指標給出操作建議，不依賴外部 API。
+    """)
