@@ -37,14 +37,18 @@ section[data-testid="stSidebar"] {
     max-width: 1200px;
 }
 
-/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」並調整大小 */
+/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」，確保在手機上不被截斷 */
 .st-emotion-cache-10trblm {
     color: #4A4A4A; 
     font-weight: 400; 
     border-bottom: 1px solid #E5E5E5; 
     padding-bottom: 5px;
     margin-bottom: 15px;
-    font-size: 1.8rem;
+    font-size: 1.8rem; /* 確保抬頭不會被截斷 */
+    white-space: nowrap; /* 強制不換行 */
+    overflow: hidden; /* 隱藏超出的部分 */
+    text-overflow: ellipsis; /* 顯示省略號 */
+    max-width: 100%; /* 限制寬度 */
 }
 
 /* 輸入/Metric 卡片的樣式 */
@@ -247,13 +251,13 @@ def render_metric_cards(current, fiveline_zone, action_detail):
     current_price = current['Close']
     
     with st.container(border=True):
-        st.markdown("#### 🚀 關鍵數據摘要")
+        st.markdown("#### 關鍵數據摘要")
         col1, col2, col3, col4 = st.columns(4)
         
         # 🎯 修正 1.2: 修正股價顯示為當前收盤價
         col1.metric("股價 (收盤)", f"{current_price:.2f}") 
 
-        # 🎯 修正 1.3: 移除「及」
+        # 🎯 🎯 修正 1.3: 移除「及」
         fiveline_zone_clean = fiveline_zone.replace("及", "")
         col2.metric("五線譜位階", fiveline_zone_clean)
         
@@ -339,7 +343,8 @@ def render_lohas_plot(valid_data, current_price, current_ma20w):
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['MA20W'], mode='lines', name='20週均線', line=dict(color='#B0A595', width=2), hovertemplate='20週MA: %{y:.2f}<extra></extra>'))
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['LB'], mode='lines', name='下通道', line=dict(color='#A3C1AD', width=2), hovertemplate='下通道: %{y:.2f}<extra></extra>'))
     
-    zone_text = "目前處於：樂活區 (多頭) 🚀" if current_price > current_ma20w else "目前處於：毅力區 (空頭) 🐻"
+    # 🎯 修正 1.4: 移除圖標
+    zone_text = "目前處於：樂活區 (多頭)" if current_price > current_ma20w else "目前處於：毅力區 (空頭)"
     fig2.update_layout(title=f"樂活通道走勢圖 - {zone_text}", height=500, hovermode='x unified', template='plotly_white', showlegend=True, legend=dict(x=0, y=1, orientation='h'))
     st.plotly_chart(fig2, use_container_width=True)
 
@@ -372,7 +377,8 @@ def render_oscillator_plots(valid_data):
     st.plotly_chart(fig4, use_container_width=True)
 
 def render_volatility_plots(valid_data, current):
-    st.markdown("### 🚀 波動與趨勢動能 (ADX, BBW, %R)")
+    # 🎯 修正 1.4: 移除圖標
+    st.markdown("### 波動與趨勢動能 (ADX, BBW, %R)")
     
     col_williams, col_bbw_ratio = st.columns(2)
     col_williams.metric("當前威廉 %R", f"{current['%R']:.2f}%")
@@ -427,7 +433,6 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
             st.markdown("#### 📅 自訂日期範圍")
             col_start, col_end = st.columns(2)
             with col_start:
-                # 修正日期顯示問題：確保傳入的是 date 物件
                 start_date_custom = st.date_input("開始日期", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
             with col_end:
                 end_date_custom = st.date_input("結束日期", value=datetime.now().date(), key="end_date_custom_key")
@@ -554,7 +559,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
                 if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
                 
-                tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "🚀 波動與情緒"])
+                tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) # 🎯 修正 1.4: 移除圖標
 
                 with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
                 with tab2: render_lohas_plot(valid_data, current['Close'], current['MA20W']);
@@ -562,6 +567,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 with tab4: render_volatility_plots(valid_data, current);
 
                 st.divider()
+                # 🎯 修正 2.1: 移除 subheader 的粗體和圖標，使用簡單的 H3
                 st.markdown("### 智能深度分析 (無需 Key)") 
                 analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, valid_data['BBW'])
                 st.markdown(analysis_result)
@@ -595,5 +601,4 @@ with col_left:
 
 # 渲染右欄的分析結果區塊
 with col_right:
-    # 這裡只需要在分析按鈕被按下後執行內容，否則保持空白
     render_analysis_main(stock_input, days, analyze_button)
