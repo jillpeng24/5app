@@ -39,18 +39,19 @@ section[data-testid="stSidebar"] {
     max-width: 1180px;
 }
 
-/* 🎯 最終修正 1: 大標題 CSS 調整，避免被截斷 */
+/* 🎯 最終修正 1: 大標題 CSS 調整，確保不被截斷 */
 .st-emotion-cache-10trblm {
     color: #A07C8C !important;
     font-weight: 500 !important;
-    font-size: 2.0rem !important; /* 增大字體大小，提高清晰度 */
+    font-size: 2.0rem !important; /* 增大字體，提高清晰度 */
     line-height: 1.2;
     border-bottom: 1px solid #E7D8D8;
     padding-bottom: 6px;
     margin-bottom: 15px;
-    /* 移除強制單行和截斷，讓標題自然顯示 */
+    /* 修正關鍵點：確保有足夠的空間，並允許換行 */
     white-space: normal; 
     overflow: visible;
+    min-width: 100%; 
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
@@ -78,12 +79,11 @@ h3, h4 {
     margin-top: 0.8rem !important;
 }
 
-/* 🎯 修正 2.2: 調整分析報告內文，移除粗體 */
 /* 確保分析報告中的標題層次拉平，移除粗體 */
 [data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4 {
-    font-weight: 500 !important; /* 確保不使用粗體 */
+    font-weight: 500 !important; 
     color: #8B6F77 !important;
-    font-size: 1.1rem !important; /* 標題文字稍小 */
+    font-size: 1.1rem !important; 
     margin-bottom: 0.2rem !important;
 }
 
@@ -99,7 +99,7 @@ p, label {
     border-bottom: 3px solid #C7A5B5 !important;
 }
 
-/* 🎯 修正 1.4: 按鈕樣式改為淡紫色 (primary button) */
+/* 按鈕樣式改為淡紫色 (primary button) */
 button[kind="primary"], .st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"] {
     background-color: #C8A2C8 !important; /* 柔和淡紫色 */
     color: white !important;
@@ -282,7 +282,7 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         
         col1.metric("股價 (收盤)", f"{current_price:.2f}") 
 
-        # 🎯 修正 1.3: 移除「及」
+        # 🎯 最終修正 3: 移除「及」
         fiveline_zone_clean = fiveline_zone.replace("及", "")
         col2.metric("五線譜位階", fiveline_zone_clean)
         
@@ -368,7 +368,6 @@ def render_lohas_plot(valid_data, current_price, current_ma20w):
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['MA20W'], mode='lines', name='20週均線', line=dict(color='#B0A595', width=2), hovertemplate='20週MA: %{y:.2f}<extra></extra>'))
     fig2.add_trace(go.Scatter(x=plot_data.index, y=plot_data['LB'], mode='lines', name='下通道', line=dict(color='#A3C1AD', width=2), hovertemplate='下通道: %{y:.2f}<extra></extra>'))
     
-    # 🎯 修正 1.4: 移除圖標
     zone_text = "目前處於：樂活區 (多頭)" if current_price > current_ma20w else "目前處於：毅力區 (空頭)"
     fig2.update_layout(title=f"樂活通道走勢圖 - {zone_text}", height=500, hovermode='x unified', template='plotly_white', showlegend=True, legend=dict(x=0, y=1, orientation='h'))
     st.plotly_chart(fig2, use_container_width=True)
@@ -573,7 +572,6 @@ def render_analysis_main(stock_input, days, analyze_button):
                     action_detail = "暫無明確訊號"
                 
                 # --- 結果呈現 ---
-                # 🎯 修正 1.2: 確保取到的股價是正確的
                 st.subheader(f"📈 {stock_name} ({stock_symbol_actual})")
                 
                 render_metric_cards(current, fiveline_zone, action_detail)
@@ -594,7 +592,6 @@ def render_analysis_main(stock_input, days, analyze_button):
                 with tab4: render_volatility_plots(valid_data, current);
 
                 st.divider()
-                # 🎯 修正 2.1: 移除 subheader 的圖標
                 st.markdown("### 智能深度分析 (無需 Key)") 
                 analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, valid_data['BBW'])
                 st.markdown(analysis_result)
