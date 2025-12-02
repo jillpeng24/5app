@@ -47,10 +47,10 @@ section[data-testid="stSidebar"] {
     border-bottom: 1px solid #E7D8D8;
     padding-bottom: 6px;
     margin-bottom: 15px;
-    /* 修正關鍵點：設置一個寬裕的最小寬度，並確保不被 overflow:hidden 限制 */
-    white-space: nowrap; /* 允許單行顯示 */
-    min-width: 300px; /* 確保至少有足夠空間顯示這五個字 */
-    overflow: visible; /* 允許溢出，確保不被截斷 */
+    /* 修正關鍵點：確保有足夠的空間，且不被 overflow:hidden 限制 */
+    white-space: nowrap; 
+    min-width: 250px; /* 確保至少有足夠空間顯示這五個字 */
+    overflow: visible; 
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
@@ -211,11 +211,10 @@ def download_stock_data_with_fallback(stock_input, days):
     start_date = end_date - timedelta(days=days + 500)
     normalized_input = stock_input.strip().upper()
     
-    # 這裡的 stock_input 仍然是 00675L, 沒有後綴
     if "." in normalized_input:
         symbol_attempts = [normalized_input]
     else:
-        # 🎯 最終修正 2: 備援嘗試
+        # 🎯 修正 2: 備援嘗試
         symbol_attempts = [f"{normalized_input}.TW", f"{normalized_input}.TWO"]
 
     final_symbol = None
@@ -306,7 +305,6 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     
     bbw_quantile = full_bbw_series.quantile(0.1)
     
-    # 🎯 修正 2.2: 使用 H4 標題，移除粗體
     analysis_text.append("#### 1. 趨勢與動能判斷 (Trend & Momentum)")
     
     adx_strength = ""
@@ -497,7 +495,6 @@ def render_analysis_main(stock_input, days, analyze_button):
                 
                 if stock_data.empty or stock_symbol_actual is None:
                     # 如果下載邏輯正確執行，這裡只會收到一個最終的嚴重錯誤
-                    st.error(f"❌ 嚴重錯誤：無法取得 {stock_input.upper()} 的資料，請檢查代號是否正確。")
                     return
                 
                 regression_data = stock_data.tail(days).copy().dropna()
@@ -584,6 +581,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
                 if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
                 
+                # 🎯 修正 1.4: 移除圖標
                 tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) 
 
                 with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
