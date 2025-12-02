@@ -38,23 +38,32 @@ section[data-testid="stSidebar"] {
     max-width: 1180px;
 }
 
+/* 標題樣式（放在參數設定上方的小字）*/
+.app-title {
+    color: #A07C8C !important;
+    font-weight: 600 !important;
+    font-size: 1.3rem !important; /* 比 st.title 小一些 */
+    line-height: 1.1;
+    margin-bottom: 0.6rem !important;
+    word-break: break-word !important;
+    white-space: normal !important;
+    font-family: "Noto Sans TC", "PingFang TC", "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", sans-serif !important;
+}
+
 /* 🎯 最終修正 1: 大標題 CSS 調整，確保完整顯示中文標題（移除 brittle hashed-class-only 規則） */
 h1, .stAppHeader h1, .st-emotion-cache-10trblm, .css-10trblm {
     color: #A07C8C !important;
     font-weight: 500 !important;
-    font-size: 2.0rem !important; /* 增大字體，提高清晰度 */
+    font-size: 2.0rem !important; /* 保留原來的大標題規則（不再用於主標題呈現） */
     line-height: 1.2;
     border-bottom: 1px solid #E7D8D8;
     padding-bottom: 6px;
     margin-bottom: 15px;
-    /* 重要：允許換行並避免被父容器截斷 */
     white-space: normal !important;
     overflow: visible !important;
     max-width: 100% !important;
     word-break: break-word !important;
     hyphens: auto;
-    /* 加入更多常見中文字型作為 fallback，改善 macOS/Safari 的字形呈現 */
-    font-family: "Noto Sans TC", "PingFang TC", "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", sans-serif !important;
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
@@ -127,7 +136,7 @@ button[kind="primary"]:hover,
 
 # ==================== 頁面配置與 CSS 注入 ====================
 st.set_page_config(page_title="樂活五線譜", layout="wide")
-st.title("樂活五線譜") 
+# note: 不再使用 st.title()（改在左側欄位顯示小字標題，避免被 Streamlit header 遮蔽）
 
 # 注入自訂 CSS
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -620,8 +629,9 @@ if 'period_type_value' not in st.session_state:
 # 創建 PC 上的兩欄佈局。在手機上會自動變成單欄堆疊。
 col_left, col_right = st.columns([1, 2.5]) 
 
-# 渲染左欄的輸入區塊
+# 在左欄加入小字標題（放在「參數設定」上方）以避開 Streamlit header 的遮蓋
 with col_left:
+    st.markdown('<div class="app-title">樂活五線譜</div>', unsafe_allow_html=True)
     stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
 
 # 渲染右欄的分析結果區塊
