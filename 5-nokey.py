@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # from openai import OpenAI
 
 # =========================================================
-# 🌸 B — Sakura Latte Theme（櫻花霧面奶茶主題）
+# 🌸 B — Sakura Latte Theme（櫻花霧面奶茶主題）- 最終版
 # =========================================================
 custom_css = """
 <style>
@@ -27,15 +27,29 @@ body, .main, .st-emotion-cache-1dp6dkb {
 section[data-testid="stSidebar"] {
     display: none;
 }
-
-/* 主區塊寬度與留白 */
+/* 確保主內容區佔滿整個寬度 */
 .block-container {
     padding-top: 1rem !important;
-    padding-left: 2rem !important;
-    padding-right: 2rem !important;
+    padding-bottom: 0rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
 }
 .main {
     max-width: 1180px;
+}
+
+/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」並調整大小 */
+.st-emotion-cache-10trblm {
+    color: #A07C8C !important;
+    font-weight: 500 !important;
+    font-size: 1.7rem !important;
+    border-bottom: 1px solid #E7D8D8;
+    padding-bottom: 6px;
+    margin-bottom: 15px;
+    white-space: nowrap; /* 確保不換行 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
@@ -55,19 +69,9 @@ section[data-testid="stSidebar"] {
     padding: 15px;
 }
 
-/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」並調整大小 */
-.st-emotion-cache-10trblm {
-    color: #A07C8C !important;
-    font-weight: 500 !important;
-    font-size: 1.7rem !important;
-    border-bottom: 1px solid #E7D8D8;
-    padding-bottom: 6px;
-    margin-bottom: 15px;
-    white-space: nowrap;
-    overflow: hidden;
-}
 
-/* 小標題（H3/H4）：粉棕灰 */
+/* 🎯 修正 2.2: 調整分析報告內文，移除粗體 */
+/* H3/H4 小標題風格：粉棕灰 */
 h3, h4 {
     font-size: 1.2rem !important;
     color: #8B6F77 !important;
@@ -75,12 +79,14 @@ h3, h4 {
     margin-top: 0.8rem !important;
 }
 
-/* 🎯 修正 2.2: 調整分析報告內文，移除粗體 */
-h3 {
-    font-weight: normal !important; 
-    font-size: 1.1rem !important;
+/* 確保分析報告中的標題層次拉平，移除粗體 */
+[data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4 {
+    font-weight: 500 !important; /* 確保不使用粗體 */
+    color: #8B6F77 !important;
 }
-p {
+
+/* 文字 */
+p, label {
     font-size: 1rem;
     color: #5F5A58 !important;
 }
@@ -336,7 +342,8 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     return "\n".join(analysis_text)
 
 
-# 輔助：圖表函數
+# 輔助：圖表函數 (保持新顏色)
+
 def render_fiveline_plot(valid_data, slope_dir, slope):
     st.markdown(f"趨勢斜率: **{slope:.4f} ({slope_dir})**")
     fig1 = go.Figure()
@@ -391,7 +398,6 @@ def render_oscillator_plots(valid_data):
     st.plotly_chart(fig4, use_container_width=True)
 
 def render_volatility_plots(valid_data, current):
-    # 🎯 修正 1.4: 移除圖標
     st.markdown("### 波動與趨勢動能 (ADX, BBW, %R)")
     
     col_williams, col_bbw_ratio = st.columns(2)
@@ -446,7 +452,6 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
         if period_type == "自訂期間":
             col_start, col_end = st.columns(2)
             with col_start:
-                # 修正日期顯示問題：確保傳入的是 date 物件
                 start_date_custom = st.date_input("開始日", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
             with col_end:
                 end_date_custom = st.date_input("結束日", value=datetime.now().date(), key="end_date_custom_key")
@@ -615,19 +620,15 @@ col_left, col_right = st.columns([1, 2.5])
 
 # 渲染左欄的輸入區塊
 with col_left:
-    render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
+    stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
 
 # 渲染右欄的分析結果區塊
 with col_right:
-    # 由於 render_input_sidebar 在 with col_left 區塊內，它會將變量設置到 session_state 或返回。
-    # 這裡我們必須從 session_state 或硬編碼預設值獲取輸入。
-    # 為了簡潔和穩定，使用 session_state 中最新的值，並假設 analyze_button 是在 render_input_sidebar 中被設置的。
-
-    # 從 session_state 獲取輸入值
+    # 從 session_state 中獲取最新的輸入值
     stock_input = st.session_state.stock_input_key if 'stock_input_key' in st.session_state else st.session_state.stock_input_value
     analyze_button = st.session_state.analyze_button_key if 'analyze_button_key' in st.session_state else False
     
-    # 計算 days 參數
+    # 計算 days 參數 (與 render_input_sidebar 中的邏輯保持一致)
     period_type = st.session_state.period_type_key if 'period_type_key' in st.session_state else st.session_state.period_type_value
     period_options = {"短期 (0.5年)": 0.5,"中期 (1年)": 1.0,"長期 (3.5年)": 3.5,"超長期 (10年)": 10.0}
 
