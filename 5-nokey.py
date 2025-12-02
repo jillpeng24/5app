@@ -1,3 +1,4 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -38,18 +39,18 @@ section[data-testid="stSidebar"] {
     max-width: 1180px;
 }
 
-/* 🎯 修正 1.1: 大標題只顯示「樂活五線譜」並調整大小 */
+/* 🎯 最終修正 1: 大標題 CSS 調整，避免被截斷 */
 .st-emotion-cache-10trblm {
     color: #A07C8C !important;
     font-weight: 500 !important;
-    font-size: 1.7rem !important;
+    font-size: 2.0rem !important; /* 增大字體大小，提高清晰度 */
+    line-height: 1.2;
     border-bottom: 1px solid #E7D8D8;
     padding-bottom: 6px;
     margin-bottom: 15px;
-    white-space: nowrap; /* 確保不換行 */
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 100%;
+    /* 移除強制單行和截斷，讓標題自然顯示 */
+    white-space: normal; 
+    overflow: visible;
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
@@ -69,8 +70,6 @@ section[data-testid="stSidebar"] {
     padding: 15px;
 }
 
-
-/* 🎯 修正 2.2: 調整分析報告內文，移除粗體 */
 /* H3/H4 小標題風格：粉棕灰 */
 h3, h4 {
     font-size: 1.2rem !important;
@@ -79,10 +78,13 @@ h3, h4 {
     margin-top: 0.8rem !important;
 }
 
+/* 🎯 修正 2.2: 調整分析報告內文，移除粗體 */
 /* 確保分析報告中的標題層次拉平，移除粗體 */
 [data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4 {
     font-weight: 500 !important; /* 確保不使用粗體 */
     color: #8B6F77 !important;
+    font-size: 1.1rem !important; /* 標題文字稍小 */
+    margin-bottom: 0.2rem !important;
 }
 
 /* 文字 */
@@ -97,9 +99,9 @@ p, label {
     border-bottom: 3px solid #C7A5B5 !important;
 }
 
-/* 🎯 修正 1.4: 按鈕：粉棕主色，hover 更深 */
+/* 🎯 修正 1.4: 按鈕樣式改為淡紫色 (primary button) */
 button[kind="primary"], .st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"] {
-    background-color: #D7B8A8 !important; /* 柔和粉棕色 */
+    background-color: #C8A2C8 !important; /* 柔和淡紫色 */
     color: white !important;
     border-radius: 10px !important;
     border: none !important;
@@ -109,7 +111,7 @@ button[kind="primary"], .st-emotion-cache-hkqjaj button[data-testid="baseButton-
 
 button[kind="primary"]:hover,
 .st-emotion-cache-hkqjaj button[data-testid="baseButton-primary"]:hover {
-    background-color: #C49E8F !important;
+    background-color: #B28FB2 !important;
 }
 
 /* Metric 主字：粉紫強調 */
@@ -213,12 +215,15 @@ def download_stock_data_with_fallback(stock_input, days):
     if "." in normalized_input:
         symbol_attempts = [normalized_input]
     else:
+        # 🎯 最終修正 2: 將 .TW 放在首位，如果失敗，警告並嘗試 .TWO
         symbol_attempts = [f"{normalized_input}.TW", f"{normalized_input}.TWO"]
 
     final_symbol = None
-    stock_data = None
+    stock_data = pd.DataFrame()
     
     for symbol in symbol_attempts:
+        
+        # 如果是第二次嘗試 (.TWO) 且第一次失敗，則顯示警告
         if symbol.endswith(".TWO"):
              st.warning(f"❌ {normalized_input}.TW 下載失敗，嘗試使用 {symbol}...")
         
@@ -228,8 +233,8 @@ def download_stock_data_with_fallback(stock_input, days):
             stock_data = data
             final_symbol = symbol
             break
-
-    if stock_data is None:
+        
+    if stock_data.empty: # 如果兩個都失敗
         return pd.DataFrame(), None, normalized_input
     
     if isinstance(stock_data.columns, pd.MultiIndex):
@@ -275,10 +280,9 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         st.markdown("#### 關鍵數據摘要")
         col1, col2, col3, col4 = st.columns(4)
         
-        # 🎯 修正 1.2: 修正股價顯示為當前收盤價
         col1.metric("股價 (收盤)", f"{current_price:.2f}") 
 
-        # 🎯 🎯 修正 1.3: 移除「及」
+        # 🎯 修正 1.3: 移除「及」
         fiveline_zone_clean = fiveline_zone.replace("及", "")
         col2.metric("五線譜位階", fiveline_zone_clean)
         
