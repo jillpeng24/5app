@@ -1,3 +1,4 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -324,7 +325,6 @@ def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=Non
         sym = normalized_input
         if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
             sym = f"{sym}.TW"
-        # FIXED: use correct parameter names for wrapper
         df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
         actual_symbol = sym
         if df is None and market == 'TW' and not sym.endswith('.TWO'):
@@ -429,55 +429,6 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         
         col4.metric("綜合建議", action_detail)
 
-
-# ---------- 智能深度分析文案函式（放在 render_analysis_main 前，避免 NameError） ----------
-def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, full_bbw_series):
-    analysis_text = []
-
-    current_adx = current['ADX']
-    current_williams_r = current['%R']
-    current_bbw = current['BBW']
-    current_v_ratio = current['Volume_Ratio']
-    
-    bbw_quantile = full_bbw_series.quantile(0.1)
-    
-    analysis_text.append("#### 1. 趨勢與動能判斷 (Trend & Momentum)")
-    
-    adx_strength = ""
-    if current_adx > 30: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度非常高。"
-    elif current_adx > 20: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度中等。"
-    else: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度較弱，可能處於盤整或反轉前夕。"
-    
-    fiveline_zone_clean = fiveline_zone.replace("及", "")
-    if slope_dir == "上升": trend_summary = f"五線譜趨勢：明確為上升，股價位於 {fiveline_zone_clean}。"
-    elif slope_dir == "下降": trend_summary = f"五線譜趨勢：明確為下降，股價位於 {fiveline_zone_clean}。"
-    else: trend_summary = f"五線譜趨勢：盤整或觀望。"
-    analysis_text.append(trend_summary + " " + adx_strength + "\n")
-
-    analysis_text.append("#### 2. 市場情緒與波動性分析")
-    sentiment_analysis = []
-    
-    if current_williams_r > -20: sentiment_analysis.append(f"🔴 極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
-    elif current_williams_r < -80: sentiment_analysis.append(f"🟢 極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
-    if current_v_ratio > 1.8: sentiment_analysis.append(f"⚠️ 成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
-    if current_bbw < bbw_quantile: sentiment_analysis.append(f"🔲 波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
-    
-    if not sentiment_analysis: analysis_text.append("市場情緒和波動性指標處於正常範圍，無極端訊號。\n")
-    else: analysis_text.append("\n".join(sentiment_analysis) + "\n")
-    
-    analysis_text.append("#### 3. 綜合操作建議")
-    
-    if current_williams_r > -20 and sell_signals: rec = f"極度危險：情緒超買且有 {len(sell_signals)} 個賣出訊號。建議投資人立即清倉或空手，風險極高。"
-    elif current_williams_r < -80 and buy_signals and current_adx < 25: rec = "中線布局機會：情緒極度悲觀。可考慮極小額試單，但需確認 ADX 是否開始上揚。"
-    elif current_bbw < bbw_quantile and current_adx < 20: rec = "靜待時機：市場處於暴風雨前的寧靜。建議保持場外觀望。"
-    elif sell_signals: rec = f"鑑於當前有 {len(sell_signals)} 個賣出訊號，建議投資人減碼或空手觀望。"
-    elif buy_signals: rec = f"當前有 {len(buy_signals)} 個買入訊號，建議可考慮分批進場，並緊盯 ADX 確認趨勢強度。"
-    else: rec = "多數指標訊號不明確。建議保持觀望，等待更明確的買賣轉折訊號出現。"
-    analysis_text.append(rec + "\n")
-    
-    analysis_text.append("#### 4. 聲明與風險提示")
-    analysis_text.append(f"本分析為基於多重技術指標的程式碼硬編碼判斷，不構成任何投資建議。所有交易決策請自行承擔風險。")
-    return "\n".join(analysis_text)
 
 # 圖表函數：已調整以隱藏圖例與移除 autoscale/reset buttons
 def render_fiveline_plot(valid_data, slope_dir, slope):
@@ -772,3 +723,53 @@ with col_right:
     
     # 確保只在按鈕按下後運行分析
     render_analysis_main(stock_input, days, analyze_button)
+
+
+# ------------------- 智能深度分析文案函式（與原本一致） -------------------
+def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, full_bbw_series):
+    analysis_text = []
+
+    current_adx = current['ADX']
+    current_williams_r = current['%R']
+    current_bbw = current['BBW']
+    current_v_ratio = current['Volume_Ratio']
+    
+    bbw_quantile = full_bbw_series.quantile(0.1)
+    
+    analysis_text.append("#### 1. 趨勢與動能判斷 (Trend & Momentum)")
+    
+    adx_strength = ""
+    if current_adx > 30: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度非常高。"
+    elif current_adx > 20: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度中等。"
+    else: adx_strength = f"ADX ({current_adx:.1f}) 顯示趨勢強度較弱，可能處於盤整或反轉前夕。"
+    
+    fiveline_zone_clean = fiveline_zone.replace("及", "")
+    if slope_dir == "上升": trend_summary = f"五線譜趨勢：明確為上升，股價位於 {fiveline_zone_clean}。"
+    elif slope_dir == "下降": trend_summary = f"五線譜趨勢：明確為下降，股價位於 {fiveline_zone_clean}。"
+    else: trend_summary = f"五線譜趨勢：盤整或觀望。"
+    analysis_text.append(trend_summary + " " + adx_strength + "\n")
+
+    analysis_text.append("#### 2. 市場情緒與波動性分析")
+    sentiment_analysis = []
+    
+    if current_williams_r > -20: sentiment_analysis.append(f"🔴 極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
+    elif current_williams_r < -80: sentiment_analysis.append(f"🟢 極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
+    if current_v_ratio > 1.8: sentiment_analysis.append(f"⚠️ 成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
+    if current_bbw < bbw_quantile: sentiment_analysis.append(f"🔲 波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
+    
+    if not sentiment_analysis: analysis_text.append("市場情緒和波動性指標處於正常範圍，無極端訊號。\n")
+    else: analysis_text.append("\n".join(sentiment_analysis) + "\n")
+    
+    analysis_text.append("#### 3. 綜合操作建議")
+    
+    if current_williams_r > -20 and sell_signals: rec = f"極度危險：情緒超買且有 {len(sell_signals)} 個賣出訊號。建議投資人立即清倉或空手，風險極高。"
+    elif current_williams_r < -80 and buy_signals and current_adx < 25: rec = "中線布局機會：情緒極度悲觀。可考慮極小額試單，但需確認 ADX 是否開始上揚。"
+    elif current_bbw < bbw_quantile and current_adx < 20: rec = "靜待時機：市場處於暴風雨前的寧靜。建議保持場外觀望。"
+    elif sell_signals: rec = f"鑑於當前有 {len(sell_signals)} 個賣出訊號，建議投資人減碼或空手觀望。"
+    elif buy_signals: rec = f"當前有 {len(buy_signals)} 個買入訊號，建議可考慮分批進場，並緊盯 ADX 確認趨勢強度。"
+    else: rec = "多數指標訊號不明確。建議保持觀望，等待更明確的買賣轉折訊號出現。"
+    analysis_text.append(rec + "\n")
+    
+    analysis_text.append("#### 4. 聲明與風險提示")
+    analysis_text.append(f"本分析為基於多重技術指標的程式碼硬編碼判斷，不構成任何投資建議。所有交易決策請自行承擔風險。")
+    return "\n".join(analysis_text)
