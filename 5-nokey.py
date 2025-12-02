@@ -1,3 +1,4 @@
+
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -324,11 +325,12 @@ def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=Non
         sym = normalized_input
         if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
             sym = f"{sym}.TW"
-        df = get_stock_data_yfinance(sym, start=start_date, end=end_date, market=market)
+        # FIXED: use correct parameter names for wrapper
+        df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
         actual_symbol = sym
         if df is None and market == 'TW' and not sym.endswith('.TWO'):
             sym2 = sym.replace('.TW','') + '.TWO'
-            df = get_stock_data_yfinance(sym2, start=start_date, end=end_date, market=market)
+            df = get_stock_data_yfinance(sym2, start_date, end_date, market=market)
             if df is not None:
                 actual_symbol = sym2
 
@@ -429,7 +431,7 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         col4.metric("綜合建議", action_detail)
 
 
-# ---------- Moved generate_internal_analysis HERE to avoid NameError ----------
+# ---------- 智能深度分析文案函式（放在 render_analysis_main 前，避免 NameError） ----------
 def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, full_bbw_series):
     analysis_text = []
 
@@ -477,7 +479,6 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     analysis_text.append("#### 4. 聲明與風險提示")
     analysis_text.append(f"本分析為基於多重技術指標的程式碼硬編碼判斷，不構成任何投資建議。所有交易決策請自行承擔風險。")
     return "\n".join(analysis_text)
-# -----------------------------------------------------------------------------
 
 # 圖表函數：已調整以隱藏圖例與移除 autoscale/reset buttons
 def render_fiveline_plot(valid_data, slope_dir, slope):
