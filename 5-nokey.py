@@ -1,4 +1,3 @@
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -48,10 +47,10 @@ section[data-testid="stSidebar"] {
     border-bottom: 1px solid #E7D8D8;
     padding-bottom: 6px;
     margin-bottom: 15px;
-    /* 修正關鍵點：確保有足夠的空間，並允許換行 */
-    white-space: normal; 
-    overflow: visible;
-    min-width: 100%; 
+    /* 修正關鍵點：設置一個寬裕的最小寬度，並確保不被 overflow:hidden 限制 */
+    white-space: nowrap; /* 允許單行顯示 */
+    min-width: 300px; /* 確保至少有足夠空間顯示這五個字 */
+    overflow: visible; /* 允許溢出，確保不被截斷 */
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
@@ -212,10 +211,11 @@ def download_stock_data_with_fallback(stock_input, days):
     start_date = end_date - timedelta(days=days + 500)
     normalized_input = stock_input.strip().upper()
     
+    # 這裡的 stock_input 仍然是 00675L, 沒有後綴
     if "." in normalized_input:
         symbol_attempts = [normalized_input]
     else:
-        # 🎯 最終修正 2: 將 .TW 放在首位，如果失敗，警告並嘗試 .TWO
+        # 🎯 最終修正 2: 備援嘗試
         symbol_attempts = [f"{normalized_input}.TW", f"{normalized_input}.TWO"]
 
     final_symbol = None
@@ -223,7 +223,7 @@ def download_stock_data_with_fallback(stock_input, days):
     
     for symbol in symbol_attempts:
         
-        # 如果是第二次嘗試 (.TWO) 且第一次失敗，則顯示警告
+        # 僅在嘗試 .TWO 時顯示警告
         if symbol.endswith(".TWO"):
              st.warning(f"❌ {normalized_input}.TW 下載失敗，嘗試使用 {symbol}...")
         
@@ -282,7 +282,7 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         
         col1.metric("股價 (收盤)", f"{current_price:.2f}") 
 
-        # 🎯 最終修正 3: 移除「及」
+        # 🎯 修正 1.3: 移除「及」
         fiveline_zone_clean = fiveline_zone.replace("及", "")
         col2.metric("五線譜位階", fiveline_zone_clean)
         
@@ -496,6 +496,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 stock_data, stock_name, stock_symbol_actual = download_stock_data_with_fallback(stock_input, days)
                 
                 if stock_data.empty or stock_symbol_actual is None:
+                    # 如果下載邏輯正確執行，這裡只會收到一個最終的嚴重錯誤
                     st.error(f"❌ 嚴重錯誤：無法取得 {stock_input.upper()} 的資料，請檢查代號是否正確。")
                     return
                 
@@ -583,7 +584,6 @@ def render_analysis_main(stock_input, days, analyze_button):
                 if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
                 if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
                 
-                # 🎯 修正 1.4: 移除圖標
                 tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) 
 
                 with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
@@ -602,7 +602,6 @@ def render_analysis_main(stock_input, days, analyze_button):
             st.code(traceback.format_exc())
 
     else:
-        # 初始畫面：不顯示任何介紹文字
         pass 
 
 
