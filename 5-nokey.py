@@ -1,4 +1,3 @@
-# Updated: detect_market improved so inputs like "00675L" (no .TW) are treated as TW.
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -6,8 +5,6 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import requests
-# 移除 OpenAI 匯入
-# from openai import OpenAI
 
 # =========================================================
 # 🌸 B — Sakura Latte Theme（櫻花霧面奶茶主題）- 最終版
@@ -471,24 +468,24 @@ def generate_signals(current, valid_data, sd_level, slope):
     buy_signals = []
     
     if sd_level >= 2:
-        if current['RSI_Divergence']: sell_signals.append("⚠️ RSI 背離 (高檔)")
-        if current['RSI'] > 70 and current['RSI'] < previous['RSI']: sell_signals.append("⚠️ RSI 從高檔回落 (超買區)")
-        if current['K'] < current['D'] and current['K'] > 80: sell_signals.append("⚠️ KD 高檔死叉")
-    if current['+DI'] < current['-DI'] and current['ADX'] > 25: sell_signals.append("🚨 DMI 趨勢轉空 (+DI < -DI 且 ADX 強)")
-    if current['Volume_Ratio'] > 2.0 and (current['Close'] - current['Open']) / current['Open'] < 0.005: sell_signals.append("⚠️ 爆量滯漲 (V-Ratio > 2.0)")
-    if current['%R'] > -20: sell_signals.append("🚨 威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
-    if current['Close'] < current['MA10']: sell_signals.append("🚨 跌破 MA10")
+        if current['RSI_Divergence']: sell_signals.append("RSI 背離 (高檔)")
+        if current['RSI'] > 70 and current['RSI'] < previous['RSI']: sell_signals.append("RSI 從高檔回落 (超買區)")
+        if current['K'] < current['D'] and current['K'] > 80: sell_signals.append("KD 高檔死叉")
+    if current['+DI'] < current['-DI'] and current['ADX'] > 25: sell_signals.append("DMI 趨勢轉空 (+DI < -DI 且 ADX 強)")
+    if current['Volume_Ratio'] > 2.0 and (current['Close'] - current['Open']) / current['Open'] < 0.005: sell_signals.append("爆量滯漲 (V-Ratio > 2.0)")
+    if current['%R'] > -20: sell_signals.append("威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
+    if current['Close'] < current['MA10']: sell_signals.append("跌破 MA10")
 
     if sd_level <= -1.0:
-        if current['RSI'] < 30 and current['RSI'] > previous['RSI']: buy_signals.append("✅ RSI 從超賣區反彈")
-        if current['K'] > current['D'] and current['K'] < 20: buy_signals.append("✅ KD 低檔金叉")
-    if current['+DI'] > current['-DI'] and current['ADX'] > 25: buy_signals.append("✅ DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
-    if current['BBW'] < valid_data['BBW'].quantile(0.1): buy_signals.append("⚠️ BBW 波動性極端收縮 (潛在爆發點)")
-    if current['%R'] < -80: buy_signals.append("✅ 威廉指標 (%R) 顯示極度悲觀情緒，潛在反彈")
+        if current['RSI'] < 30 and current['RSI'] > previous['RSI']: buy_signals.append("RSI 從超賣區反彈")
+        if current['K'] > current['D'] and current['K'] < 20: buy_signals.append("KD 低檔金叉")
+    if current['+DI'] > current['-DI'] and current['ADX'] > 25: buy_signals.append("DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
+    if current['BBW'] < valid_data['BBW'].quantile(0.1): buy_signals.append("BBW 波動性極端收縮 (潛在爆發點)")
+    if current['%R'] < -80: buy_signals.append("威廉指標 (%R) 顯示極度悲觀情緒，潛在反彈")
     if 0.5 <= sd_level <= 1.5:
-        if slope > 0: buy_signals.append("✅ 趨勢向上 (Slope > 0) 且股價合理")
-        if current['Close'] > current['MA20W']: buy_signals.append("✅ 站上生命線")
-        if current['K'] > current['D'] and 40 <= current['K'] <= 60: buy_signals.append("💚 KD 中段黃金交叉")
+        if slope > 0: buy_signals.append("趨勢向上 (Slope > 0) 且股價合理")
+        if current['Close'] > current['MA20W']: buy_signals.append("站上生命線")
+        if current['K'] > current['D'] and 40 <= current['K'] <= 60: buy_signals.append("KD 中段黃金交叉")
         
     return sell_signals, buy_signals
 
@@ -507,9 +504,9 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         col2.metric("五線譜位階", fiveline_zone_clean)
         
         sentiment_val = current['%R']
-        if sentiment_val > -20: sentiment_text = "極度樂觀 🔴"
-        elif sentiment_val < -80: sentiment_text = "極度悲觀 🟢"
-        else: sentiment_text = "均衡 ⚪"
+        if sentiment_val > -20: sentiment_text = "極度樂觀 "
+        elif sentiment_val < -80: sentiment_text = "極度悲觀 "
+        else: sentiment_text = "均衡 "
         col3.metric("市場情緒", sentiment_text)
         
         col4.metric("綜合建議", action_detail)
@@ -542,10 +539,10 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     analysis_text.append("#### 2. 市場情緒與波動性分析")
     sentiment_analysis = []
     
-    if current_williams_r > -20: sentiment_analysis.append(f"🔴 極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
-    elif current_williams_r < -80: sentiment_analysis.append(f"🟢 極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
-    if current_v_ratio > 1.8: sentiment_analysis.append(f"⚠️ 成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
-    if current_bbw < bbw_quantile: sentiment_analysis.append(f"🔲 波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
+    if current_williams_r > -20: sentiment_analysis.append(f"極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
+    elif current_williams_r < -80: sentiment_analysis.append(f"極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
+    if current_v_ratio > 1.8: sentiment_analysis.append(f"成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
+    if current_bbw < bbw_quantile: sentiment_analysis.append(f"波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
     
     if not sentiment_analysis: analysis_text.append("市場情緒和波動性指標處於正常範圍，無極端訊號。\n")
     else: analysis_text.append("\n".join(sentiment_analysis) + "\n")
@@ -657,7 +654,7 @@ def render_volatility_plots(valid_data, current):
 def render_input_sidebar(initial_stock_input, initial_period_type):
     
     with st.container():
-        st.markdown("### 🔍 參數設定")
+        st.markdown("### 樂活五線譜")
         
         stock_input = st.text_input("輸入股票代碼", value=initial_stock_input, key="stock_input_key")
 
@@ -774,22 +771,22 @@ def render_analysis_main(stock_input, days, analyze_button):
                 sd_level = deviation / sd
                 
                 # 🎯 修正 1.3: 移除「及」
-                if sd_level >= 2: fiveline_zone = "極度樂觀 (+2SD以上)"
-                elif sd_level >= 1: fiveline_zone = "樂觀 (+1SD~+2SD)"
-                elif sd_level >= 0: fiveline_zone = "合理區 (TL~+1SD)"
-                elif sd_level >= -1: fiveline_zone = "悲觀 (-1SD~TL)"
-                else: fiveline_zone = "極度悲觀 (-2SD以下)"
+                if sd_level >= 2: fiveline_zone = "極度樂觀"
+                elif sd_level >= 1: fiveline_zone = "樂觀"
+                elif sd_level >= 0: fiveline_zone = "合理區"
+                elif sd_level >= -1: fiveline_zone = "悲觀"
+                else: fiveline_zone = "極度悲觀"
                 
                 sell_signals, buy_signals = generate_signals(current, valid_data, sd_level, slope)
                 
                 if sell_signals:
-                    action = "🔴 **賣出訊號**"
+                    action = "**賣出訊號**"
                     action_detail = "建議減碼或觀望"
                 elif buy_signals:
-                    action = "🟢 **買入訊號**"
+                    action = "**買入訊號**"
                     action_detail = "可考慮進場或加碼"
                 else:
-                    action = "⚪ **觀望**"
+                    action = "**觀望**"
                     action_detail = "暫無明確訊號"
                 
                 # --- 結果呈現 ---
@@ -813,7 +810,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 with tab4: render_volatility_plots(valid_data, current);
 
                 st.divider()
-                st.markdown("### 智能深度分析 (無需 Key)") 
+                st.markdown("### 深度分析：")
                 analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, sell_signals, buy_signals, valid_data['BBW'])
                 st.markdown(analysis_result)
 
