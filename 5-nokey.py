@@ -32,8 +32,8 @@ section[data-testid="stSidebar"] {
 .block-container {
     padding-top: 1rem !important;
     padding-bottom: 0rem;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
 }
 .main {
     max-width: 1180px;
@@ -209,163 +209,6 @@ def calculate_williams_r(high, low, close, period=14):
     williams_r = -100 * (hhv - close) / range_hl.replace(0, np.nan)
     return williams_r
 
-# ----------------------------
-# 新增：支援台股與美股的資料取得函數
-# ----------------------------
-
-# (如您允許，預設內嵌 FinMind Token，可自行修改或移除)
-FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMC0zMCAxMTozOTowNiIsInVzZXJfaWQiOiJwZW5nNjI0MCIsImlwIjoiNDIuNzIuMTU0LjIwIn0.AJUDjWJYYRbSeDhVjaP1KMP3saVBc8V1zOYI2RTJvgM"
-
-def detect_market(symbol):
-    """
-    自動判斷股票市場類型
-    Returns: 'TW' 或 'US'
-    """
-    symbol = symbol.upper().strip()
-    if '.TW' in symbol or '.TWO' in symbol:
-        return 'TW'
-    # 台股純數字、4 碼
-    if symbol.isdigit() and len(symbol) == 4:
-        return 'TW'
-    return 'US'
-
-def get_tw_stock_data_finmind(symbol, start_date, end_date, api_token=None):
-    """
-    使用 FinMind API 獲取台股歷史數據，回傳 DataFrame，index 為日期，欄位為 Open/High/Low/Close/Volume
-    """
-    try:
-        clean_symbol = symbol.replace('.TW', '').replace('.TWO', '').strip()
-        url = "https://api.finmindtrade.com/api/v4/data"
-        params = {
-            "dataset": "TaiwanStockPrice",
-            "data_id": clean_symbol,
-            "start_date": start_date.strftime('%Y-%m-%d'),
-            "end_date": end_date.strftime('%Y-%m-%d')
-        }
-        if api_token and api_token.strip():
-            params["token"] = api_token
-        response = requests.get(url, params=params, timeout=15)
-        response.raise_for_status()
-        data = response.json()
-        if data.get('status') != 200 or not data.get('data'):
-            return None
-        df = pd.DataFrame(data['data'])
-        # FinMind 欄位命名可能不同，做對映
-        df = df.rename(columns={
-            'date': 'date',
-            'open': 'open',
-            'max': 'high',
-            'min': 'low',
-            'close': 'close',
-            'Trading_Volume': 'volume',
-            'Trading_Volume': 'volume'
-        })
-        # 一些 FinMind 回傳欄位可能是小寫或混合，保險起見取需要欄位
-        cols_needed = ['date', 'open', 'high', 'low', 'close', 'volume']
-        if not all(c in df.columns for c in cols_needed):
-            # 如果沒有 volume 欄位，嘗試其他可能名稱
-            if 'volume' not in df.columns and 'Trade_Volume' in df.columns:
-                df = df.rename(columns={'Trade_Volume':'volume'})
-        df = df[[c for c in cols_needed if c in df.columns]]
-        df['date'] = pd.to_datetime(df['date'])
-        for col in ['open', 'high', 'low', 'close', 'volume']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.sort_values('date').reset_index(drop=True)
-        df.set_index('date', inplace=True)
-        # 將欄位名調整為首字大寫，以符合後續程式
-        df.rename(columns=lambda x: x.capitalize(), inplace=True)
-        return df
-    except Exception as e:
-        # 不要在 library 層面呼叫 st.* 太多，僅回傳 None 並在上層顯示錯誤
-        return None
-
-def get_stock_data_yfinance(symbol, start_date, end_date, market='US'):
-    """
-    使用 yfinance 獲取股票歷史數據（支援美股和台股），回傳 index 為日期的 DataFrame
-    """
-    try:
-        sym = symbol.strip().upper()
-        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
-            sym = f"{sym}.TW"
-        # 使用 yf.download 以確保得到 DataFrame 與日期索引
-        df = yf.download(sym, start=start_date, end=end_date, progress=False)
-        if df is None or df.empty:
-            return None
-        # 有時候會有 MultiIndex columns，取 level 0
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        # 確保 index 是 DatetimeIndex 並將欄位名稱標準化（首字大寫）
-        df.index = pd.to_datetime(df.index)
-        df.rename(columns=lambda x: x.capitalize(), inplace=True)
-        # 僅保留我們需要的欄位
-        keep = [c for c in ['Open','High','Low','Close','Volume'] if c in df.columns]
-        df = df[keep]
-        return df
-    except Exception as e:
-        return None
-
-@st.cache_data(ttl=3600)
-def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=None):
-    """
-    智能獲取股票數據（自動判斷市場與資料來源）
-    參數 days 用來計算 start/end 日
-    回傳: (DataFrame, stock_name, actual_symbol)
-    """
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days + 500)  # 保留先前行為：下載較長歷史以避免計算窗口不足
-    normalized_input = stock_input.strip()
-    market = detect_market(normalized_input)
-    actual_source = None
-    df = None
-    actual_symbol = normalized_input
-
-    # 決定資料來源：台股優先 FinMind（若有 token），否則 yfinance
-    if data_source == 'auto':
-        if market == 'TW' and finmind_token and finmind_token.strip():
-            actual_source = 'finmind'
-        else:
-            actual_source = 'yfinance'
-    else:
-        actual_source = data_source
-
-    if actual_source == 'finmind' and market == 'TW':
-        df = get_tw_stock_data_finmind(normalized_input, start_date, end_date, api_token=finmind_token)
-        if df is not None:
-            # FinMind 回傳不含 symbol 欄位，將 actual_symbol 補上
-            actual_symbol = normalized_input.replace('.TW', '').replace('.TWO','').strip()
-    # 若 finmind 失敗或選擇 yfinance
-    if df is None:
-        # 轉為 yfinance 的 symbol 形式
-        sym = normalized_input
-        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
-            sym = f"{sym}.TW"
-        df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
-        if df is None:
-            # 若 yfinance 也失敗，嘗試其他台股 suffix (.TWO)
-            if market == 'TW' and not sym.endswith('.TWO'):
-                sym_try = sym.replace('.TW', '') + '.TWO'
-                df = get_stock_data_yfinance(sym_try, start_date, end_date, market=market)
-                if df is not None:
-                    actual_symbol = sym_try
-            # 最後仍無法取得
-            if df is None:
-                return pd.DataFrame(), None, normalized_input
-        else:
-            actual_symbol = sym
-
-    # 取得股票名稱（使用 yfinance info 為主，若 FinMind 則嘗試 yfinance.lookup）
-    stock_name = None
-    try:
-        # 嘗試用 yfinance 讀取名稱（部分台股在 yfinance 上可取得 longName）
-        info_ticker = yf.Ticker(actual_symbol)
-        info = info_ticker.info
-        stock_name = info.get('longName') or info.get('shortName') or normalized_input
-    except:
-        stock_name = normalized_input
-
-    return df, stock_name, actual_symbol
-
 @st.cache_data(ttl=3600)
 def get_stock_info(symbol):
     try:
@@ -376,6 +219,247 @@ def get_stock_info(symbol):
     except:
         return symbol, symbol
 
+@st.cache_data(ttl=3600) 
+def download_stock_data_with_fallback(stock_input, days):
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days + 500)
+    normalized_input = stock_input.strip().upper()
+    
+    if "." in normalized_input:
+        symbol_attempts = [normalized_input]
+    else:
+        # 🎯 修正 2: 備援嘗試
+        symbol_attempts = [f"{normalized_input}.TW", f"{normalized_input}.TWO"]
+
+    final_symbol = None
+    stock_data = pd.DataFrame()
+    
+    for symbol in symbol_attempts:
+        
+        # 僅在嘗試 .TWO 時顯示警告
+        if symbol.endswith(".TWO"):
+             st.warning(f"❌ {normalized_input}.TW 下載失敗，嘗試使用 {symbol}...")
+        
+        data = yf.download(symbol, start=start_date, end=end_date, progress=False)
+        
+        if not data.empty:
+            stock_data = data
+            final_symbol = symbol
+            break
+        
+    if stock_data.empty: # 如果兩個都失敗
+        return pd.DataFrame(), None, normalized_input
+    
+    if isinstance(stock_data.columns, pd.MultiIndex):
+        stock_data.columns = stock_data.columns.get_level_values(0)
+    
+    stock_name, _ = get_stock_info(final_symbol)
+        
+    return stock_data, stock_name, final_symbol
+
+# ----------------------------
+# 新增：支援台股與美股的資料取得函數（保留原有 download_stock_data_with_fallback 作為備援）
+# ----------------------------
+
+# (如您允許，預設內嵌 FinMind Token，可自行修改或移除)
+FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMC0zMCAxMTozOTowNiIsInVzZXJfaWQiOiJwZW5nNjI0MCIsImlwIjoiNDIuNzIuMTU0LjIwIn0.AJUDjWJYYRbSeDhVjaP1KMP3saVBc8V1zOYI2RTJvgM"
+
+def detect_market(symbol):
+    """
+    自動判斷股票市場類型
+    
+    Args:
+        symbol: 股票代碼
+    
+    Returns:
+        str: 'TW' (台股) 或 'US' (美股)
+    """
+    symbol = symbol.upper().strip()
+    
+    # 台股判斷條件
+    if '.TW' in symbol or '.TWO' in symbol:
+        return 'TW'
+    elif symbol.isdigit() and len(symbol) == 4:
+        return 'TW'
+    else:
+        return 'US'
+
+def get_tw_stock_data_finmind(symbol, start_date, end_date, api_token=None):
+    """
+    使用 FinMind API 獲取台股歷史數據（備援方法）
+    
+    Args:
+        symbol: 台股代碼（如：2330 或 2330.TW）
+        start_date: 起始日期 (datetime)
+        end_date: 結束日期 (datetime)
+        api_token: FinMind API Token（可選）
+    
+    Returns:
+        DataFrame or None: index 為 datetime 的 DataFrame (Open/High/Low/Close/Volume) 或 None
+    """
+    try:
+        # 移除.TW後綴（如果有）
+        clean_symbol = symbol.replace('.TW', '').replace('.TWO', '').strip()
+        
+        # 構建API請求URL
+        url = "https://api.finmindtrade.com/api/v4/data"
+        params = {
+            "dataset": "TaiwanStockPrice",
+            "data_id": clean_symbol,
+            "start_date": start_date.strftime('%Y-%m-%d'),
+            "end_date": end_date.strftime('%Y-%m-%d')
+        }
+        
+        # 如果有提供API token，加入參數
+        if api_token and api_token.strip():
+            params["token"] = api_token
+        
+        # 發送API請求
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # 檢查回應狀態
+        if data.get('status') != 200 or not data.get('data'):
+            return None
+        
+        # 轉換為DataFrame
+        df = pd.DataFrame(data['data'])
+        
+        # 重命名欄位以符合標準格式
+        df = df.rename(columns={
+            'date': 'date',
+            'open': 'open',
+            'max': 'high',
+            'min': 'low',
+            'close': 'close',
+            'Trading_Volume': 'volume'
+        })
+        
+        # 選擇需要的欄位
+        df = df[['date', 'open', 'high', 'low', 'close', 'volume']]
+        
+        # 轉換日期格式
+        df['date'] = pd.to_datetime(df['date'])
+        
+        # 轉換數值格式
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # 按日期排序並設置 index
+        df = df.sort_values('date').set_index('date')
+        
+        # 調整欄位名稱以符合後續程式（首字大寫）
+        df.rename(columns=lambda x: x.capitalize(), inplace=True)
+        
+        return df
+        
+    except Exception as e:
+        return None
+
+def get_stock_data_yfinance(symbol, start_date, end_date, market='US'):
+    """
+    使用 yfinance 獲取股票歷史數據（支援美股和台股）
+    
+    Args:
+        symbol: 股票代碼
+        start_date: 起始日期 (datetime)
+        end_date: 結束日期 (datetime)
+        market: 市場類型 ('US' 或 'TW')
+    
+    Returns:
+        DataFrame or None: index 為 datetime 的 DataFrame (Open/High/Low/Close/Volume)
+    """
+    try:
+        sym = symbol.strip().upper()
+        # 如果是台股且沒有.TW後綴，自動加上
+        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
+            sym = f"{sym}.TW"
+        
+        # 使用 yfinance 下載數據
+        df = yf.download(sym, start=start_date, end=end_date, progress=False)
+        
+        if df is None or df.empty:
+            return None
+        
+        # 處理 MultiIndex columns
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        # 確保 index 為 datetime
+        df.index = pd.to_datetime(df.index)
+        
+        # 統一欄位名稱（首字大寫）
+        df.rename(columns=lambda x: x.capitalize(), inplace=True)
+        
+        # 僅保留需要欄位
+        keep = [c for c in ['Open','High','Low','Close','Volume'] if c in df.columns]
+        df = df[keep]
+        
+        return df
+        
+    except Exception as e:
+        return None
+
+def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=None):
+    """
+    智能獲取股票數據（自動判斷市場和資料來源）
+    會先判斷市場：台股則優先 FinMind（若提供 token 且 data_source 為 auto），否則用 yfinance。
+    回傳 (DataFrame, stock_name, actual_symbol)
+    """
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days + 500)
+    normalized_input = stock_input.strip()
+    market = detect_market(normalized_input)
+    
+    # 決定使用的資料來源
+    if data_source == 'auto':
+        if market == 'TW' and finmind_token and finmind_token.strip():
+            actual_source = 'finmind'
+        else:
+            actual_source = 'yfinance'
+    else:
+        actual_source = data_source
+    
+    df = None
+    actual_symbol = normalized_input
+    
+    # 先嘗試 FinMind (只對台股)
+    if actual_source == 'finmind' and market == 'TW':
+        df = get_tw_stock_data_finmind(normalized_input, start_date, end_date, api_token=finmind_token)
+        if df is not None:
+            # FinMind 回傳的 index 為日期且欄位為 Open/High/Low/Close/Volume
+            actual_symbol = normalized_input.replace('.TW','').replace('.TWO','').strip()
+    # 否則使用 yfinance
+    if df is None:
+        sym = normalized_input
+        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
+            sym = f"{sym}.TW"
+        df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
+        actual_symbol = sym
+        # 若台股 yfinance 失敗，再嘗試 .TWO
+        if df is None and market == 'TW' and not sym.endswith('.TWO'):
+            sym2 = sym.replace('.TW','') + '.TWO'
+            df = get_stock_data_yfinance(sym2, start_date, end_date, market=market)
+            if df is not None:
+                actual_symbol = sym2
+    
+    if df is None or df.empty:
+        return pd.DataFrame(), None, normalized_input
+    
+    # 嘗試取得名稱（以 yfinance 為主）
+    stock_name = None
+    try:
+        info_ticker = yf.Ticker(actual_symbol)
+        info = info_ticker.info
+        stock_name = info.get('longName') or info.get('shortName') or normalized_input
+    except:
+        stock_name = normalized_input
+    
+    # 確保欄位名稱與原本程式一致（Open/High/Low/Close/Volume）
+    return df, stock_name, actual_symbol
+
 # 輔助：買賣訊號判斷
 def generate_signals(current, valid_data, sd_level, slope):
     previous = valid_data.iloc[-2] if len(valid_data) > 1 else current
@@ -383,24 +467,24 @@ def generate_signals(current, valid_data, sd_level, slope):
     buy_signals = []
     
     if sd_level >= 2:
-        if current['RSI_Divergence']: sell_signals.append("⚠️ RSI 背離 (高檔)")
-        if current['RSI'] > 70 and current['RSI'] < previous['RSI']: sell_signals.append("⚠️ RSI 從高檔回落 (超買區)")
-        if current['K'] < current['D'] and current['K'] > 80: sell_signals.append("⚠️ KD 高檔死叉")
-    if current['+DI'] < current['-DI'] and current['ADX'] > 25: sell_signals.append("🚨 DMI 趨勢轉空 (+DI < -DI 且 ADX 強)")
-    if current['Volume_Ratio'] > 2.0 and (current['Close'] - current['Open']) / current['Open'] < 0.005: sell_signals.append("⚠️ 爆量滯漲 (V-Ratio > 2.0)")
-    if current['%R'] > -20: sell_signals.append("🚨 威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
-    if current['Close'] < current['MA10']: sell_signals.append("🚨 跌破 MA10")
+        if current['RSI_Divergence']: sell_signals.append("RSI 背離 (高檔)")
+        if current['RSI'] > 70 and current['RSI'] < previous['RSI']: sell_signals.append("RSI 從高檔回落 (超買區)")
+        if current['K'] < current['D'] and current['K'] > 80: sell_signals.append("KD 高檔死叉")
+    if current['+DI'] < current['-DI'] and current['ADX'] > 25: sell_signals.append("DMI 趨勢轉空 (+DI < -DI 且 ADX 強)")
+    if current['Volume_Ratio'] > 2.0 and (current['Close'] - current['Open']) / current['Open'] < 0.005: sell_signals.append("爆量滯漲 (V-Ratio > 2.0)")
+    if current['%R'] > -20: sell_signals.append("威廉指標 (%R) 顯示極度樂觀情緒，潛在反轉")
+    if current['Close'] < current['MA10']: sell_signals.append("跌破 MA10")
 
     if sd_level <= -1.0:
-        if current['RSI'] < 30 and current['RSI'] > previous['RSI']: buy_signals.append("✅ RSI 從超賣區反彈")
-        if current['K'] > current['D'] and current['K'] < 20: buy_signals.append("✅ KD 低檔金叉")
-    if current['+DI'] > current['-DI'] and current['ADX'] > 25: buy_signals.append("✅ DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
-    if current['BBW'] < valid_data['BBW'].quantile(0.1): buy_signals.append("⚠️ BBW 波動性極端收縮 (潛在爆發點)")
-    if current['%R'] < -80: buy_signals.append("✅ 威廉指標 (%R) 顯示極度悲觀情緒，潛在反彈")
+        if current['RSI'] < 30 and current['RSI'] > previous['RSI']: buy_signals.append("RSI 從超賣區反彈")
+        if current['K'] > current['D'] and current['K'] < 20: buy_signals.append("KD 低檔金叉")
+    if current['+DI'] > current['-DI'] and current['ADX'] > 25: buy_signals.append("DMI 趨勢轉多 (+DI > -DI 且 ADX 強)")
+    if current['BBW'] < valid_data['BBW'].quantile(0.1): buy_signals.append("BBW 波動性極端收縮 (潛在爆發點)")
+    if current['%R'] < -80: buy_signals.append("威廉指標 (%R) 顯示極度悲觀情緒，潛在反彈")
     if 0.5 <= sd_level <= 1.5:
-        if slope > 0: buy_signals.append("✅ 趨勢向上 (Slope > 0) 且股價合理")
-        if current['Close'] > current['MA20W']: buy_signals.append("✅ 站上生命線")
-        if current['K'] > current['D'] and 40 <= current['K'] <= 60: buy_signals.append("💚 KD 中段黃金交叉")
+        if slope > 0: buy_signals.append("趨勢向上 (Slope > 0) 且股價合理")
+        if current['Close'] > current['MA20W']: buy_signals.append("站上生命線")
+        if current['K'] > current['D'] and 40 <= current['K'] <= 60: buy_signals.append("KD 中段黃金交叉")
         
     return sell_signals, buy_signals
 
@@ -419,9 +503,9 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         col2.metric("五線譜位階", fiveline_zone_clean)
         
         sentiment_val = current['%R']
-        if sentiment_val > -20: sentiment_text = "極度樂觀 🔴"
-        elif sentiment_val < -80: sentiment_text = "極度悲觀 🟢"
-        else: sentiment_text = "均衡 ⚪"
+        if sentiment_val > -20: sentiment_text = "極度樂觀 "
+        elif sentiment_val < -80: sentiment_text = "極度悲觀 "
+        else: sentiment_text = "均衡 "
         col3.metric("市場情緒", sentiment_text)
         
         col4.metric("綜合建議", action_detail)
@@ -454,10 +538,10 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     analysis_text.append("#### 2. 市場情緒與波動性分析")
     sentiment_analysis = []
     
-    if current_williams_r > -20: sentiment_analysis.append(f"🔴 極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
-    elif current_williams_r < -80: sentiment_analysis.append(f"🟢 極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
-    if current_v_ratio > 1.8: sentiment_analysis.append(f"⚠️ 成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
-    if current_bbw < bbw_quantile: sentiment_analysis.append(f"🔲 波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
+    if current_williams_r > -20: sentiment_analysis.append(f"極度樂觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超買區。")
+    elif current_williams_r < -80: sentiment_analysis.append(f"極度悲觀：威廉指標 (%R: {current_williams_r:.1f}%) 處於超賣區。")
+    if current_v_ratio > 1.8: sentiment_analysis.append(f"成交狂熱：成交量 ({current_v_ratio:.1f}倍均量) 異常放大。")
+    if current_bbw < bbw_quantile: sentiment_analysis.append(f"波動性收縮：價格壓縮至極致，預期短期內將有方向性大變動。")
     
     if not sentiment_analysis: analysis_text.append("市場情緒和波動性指標處於正常範圍，無極端訊號。\n")
     else: analysis_text.append("\n".join(sentiment_analysis) + "\n")
@@ -569,7 +653,7 @@ def render_volatility_plots(valid_data, current):
 def render_input_sidebar(initial_stock_input, initial_period_type):
     
     with st.container():
-        st.markdown("### 🔍 參數設定")
+        st.markdown("### 🔍 樂活五線譜")
         
         stock_input = st.text_input("輸入股票代碼", value=initial_stock_input, key="stock_input_key")
 
@@ -686,22 +770,22 @@ def render_analysis_main(stock_input, days, analyze_button):
                 sd_level = deviation / sd
                 
                 # 🎯 修正 1.3: 移除「及」
-                if sd_level >= 2: fiveline_zone = "極度樂觀 (+2SD以上)"
-                elif sd_level >= 1: fiveline_zone = "樂觀 (+1SD~+2SD)"
-                elif sd_level >= 0: fiveline_zone = "合理區 (TL~+1SD)"
-                elif sd_level >= -1: fiveline_zone = "悲觀 (-1SD~TL)"
-                else: fiveline_zone = "極度悲觀 (-2SD以下)"
+                if sd_level >= 2: fiveline_zone = "極度樂觀"
+                elif sd_level >= 1: fiveline_zone = "樂觀"
+                elif sd_level >= 0: fiveline_zone = "合理區"
+                elif sd_level >= -1: fiveline_zone = "悲觀"
+                else: fiveline_zone = "極度悲觀"
                 
                 sell_signals, buy_signals = generate_signals(current, valid_data, sd_level, slope)
                 
                 if sell_signals:
-                    action = "🔴 **賣出訊號**"
+                    action = "**賣出訊號**"
                     action_detail = "建議減碼或觀望"
                 elif buy_signals:
-                    action = "🟢 **買入訊號**"
+                    action = "**買入訊號**"
                     action_detail = "可考慮進場或加碼"
                 else:
-                    action = "⚪ **觀望**"
+                    action = "**觀望**"
                     action_detail = "暫無明確訊號"
                 
                 # --- 結果呈現 ---
