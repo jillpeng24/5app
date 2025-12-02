@@ -38,8 +38,8 @@ section[data-testid="stSidebar"] {
     max-width: 1180px;
 }
 
-/* 🎯 最終修正 1: 大標題 CSS 調整，確保不被截斷 */
-.st-emotion-cache-10trblm {
+/* 🎯 最終修正 1: 大標題 CSS 調整，確保完整顯示中文標題（移除 brittle hashed-class-only 規則） */
+h1, .stAppHeader h1, .st-emotion-cache-10trblm, .css-10trblm {
     color: #A07C8C !important;
     font-weight: 500 !important;
     font-size: 2.0rem !important; /* 增大字體，提高清晰度 */
@@ -47,10 +47,14 @@ section[data-testid="stSidebar"] {
     border-bottom: 1px solid #E7D8D8;
     padding-bottom: 6px;
     margin-bottom: 15px;
-    /* 修正關鍵點：確保有足夠的空間，且不被 overflow:hidden 限制 */
-    white-space: nowrap; 
-    min-width: 250px; /* 確保至少有足夠空間顯示這五個字 */
-    overflow: visible; 
+    /* 重要：允許換行並避免被父容器截斷 */
+    white-space: normal !important;
+    overflow: visible !important;
+    max-width: 100% !important;
+    word-break: break-word !important;
+    hyphens: auto;
+    /* 加入更多常見中文字型作為 fallback，改善 macOS/Safari 的字形呈現 */
+    font-family: "Noto Sans TC", "PingFang TC", "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", sans-serif !important;
 }
 
 /* 卡片統一風格：柔白 + 淡粉邊框 + 櫻花陰影 */
