@@ -1,3 +1,4 @@
+# Updated: detect_market improved so inputs like "00675L" (no .TW) are treated as TW.
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -266,23 +267,26 @@ FINMIND_TOKEN = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNS0xMC0zMC
 
 def detect_market(symbol):
     """
-    自動判斷股票市場類型
-    
-    Args:
-        symbol: 股票代碼
-    
-    Returns:
-        str: 'TW' (台股) 或 'US' (美股)
+    自動判斷股票市場類型（改進版）
+    - 若輸入含 .TW 或 .TWO -> 台股
+    - 若去掉後綴後，前 4 個字元皆為數字 (例如 2330 / 0067...)，視為台股（支援像 00675L 這種代碼）
+    - 否則預設為美股 (US)
     """
-    symbol = symbol.upper().strip()
-    
-    # 台股判斷條件
-    if '.TW' in symbol or '.TWO' in symbol:
-        return 'TW'
-    elif symbol.isdigit() and len(symbol) == 4:
-        return 'TW'
-    else:
+    if not symbol or not isinstance(symbol, str):
         return 'US'
+    s = symbol.upper().strip()
+    # explicit suffix
+    if '.TW' in s or '.TWO' in s:
+        return 'TW'
+    # remove common suffixes for inspection
+    clean = s.replace('.TW', '').replace('.TWO', '').replace('.US','').strip()
+    # if first 4 chars are digits -> likely TW ticker (e.g., "00675L" -> "0067" are digits)
+    if len(clean) >= 4 and clean[:4].isdigit():
+        return 'TW'
+    # if whole clean is digits with typical TW lengths
+    if clean.isdigit() and len(clean) in (3,4,5):
+        return 'TW'
+    return 'US'
 
 def get_tw_stock_data_finmind(symbol, start_date, end_date, api_token=None):
     """
@@ -713,7 +717,7 @@ def render_analysis_main(stock_input, days, analyze_button):
                 
                 if stock_data.empty or stock_symbol_actual is None:
                     # 如果下載邏輯正確執行，這裡只會收到一個最終的嚴重錯誤
-                    st.error("❌ 無法取得股票資料，請檢查代碼或網路連線。")
+                    st.error("❌ 無法取得股票資料，請檢查股票代碼是否正確。")
                     return
                 
                 regression_data = stock_data.tail(days).copy().dropna()
