@@ -145,7 +145,24 @@ button[kind="primary"]:hover,
         display: none !important;
     }
 }
-"""
+
+/* 🎯 最終修正 4：在小螢幕上強制圖表容器擴大 */
+@media (max-width: 768px) {
+    /* 針對所有 Streamlit 欄位容器，移除所有左右邊距 */
+    [data-testid="stColumn"] {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    /* 針對主內容區，讓它更緊湊 */
+    .block-container {
+        padding-left: 0.5rem !important; /* 保持極小的邊緣 padding */
+        padding-right: 0.5rem !important;
+    }
+    /* 針對 Plotly 圖表本身，確保佔滿父容器 */
+    .js-plotly-plot {
+        width: 100% !important;
+    }
+}"""
 
 # ==================== 頁面配置與 CSS 注入 ====================
 st.set_page_config(page_title="樂活五線譜", layout="wide")
