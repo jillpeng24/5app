@@ -138,31 +138,7 @@ button[kind="primary"]:hover,
     line-height: 1.3 !important;
     word-wrap: break-word !important;
 }
-
-/* 🎯 最終修正 3：在小螢幕上隱藏 Plotly 圖例（圖例的 CSS 類是 .legend） */
-@media (max-width: 768px) {
-    .modebar-container, .infolayer .legend {
-        display: none !important;
-    }
-}
-
-/* 🎯 最終修正 4：在小螢幕上強制圖表容器擴大 */
-@media (max-width: 768px) {
-    /* 針對所有 Streamlit 欄位容器，移除所有左右邊距 */
-    [data-testid="stColumn"] {
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-    }
-    /* 針對主內容區，讓它更緊湊 */
-    .block-container {
-        padding-left: 0.5rem !important; /* 保持極小的邊緣 padding */
-        padding-right: 0.5rem !important;
-    }
-    /* 針對 Plotly 圖表本身，確保佔滿父容器 */
-    .js-plotly-plot {
-        width: 100% !important;
-    }
-}"""
+"""
 
 # ==================== 頁面配置與 CSS 注入 ====================
 st.set_page_config(page_title="樂活五線譜", layout="wide")
@@ -604,7 +580,7 @@ def render_fiveline_plot(valid_data, slope_dir, slope):
     fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#BBA6A0', width=2))) # 奶茶灰棕
     fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#D7CFCB', width=1.8)))
     fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#E5DDDA', width=1.8)))
-    fig1.update_layout(title="五線譜走勢圖", height=500, hovermode='x unified', template='plotly_white')
+    fig1.update_layout(title="五線譜走勢圖", height=500, hovermode='x unified', template='plotly_white', showlegend=False)
     st.plotly_chart(fig1, use_container_width=True)
 
 def render_lohas_plot(valid_data, current_price, current_ma20w):
