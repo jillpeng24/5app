@@ -28,7 +28,7 @@ section[data-testid="stSidebar"] {
 }
 /* 確保主內容區佔滿整個寬度 */
 .block-container {
-    padding-top: 1rem !important;
+    padding-top: 3.5rem !important;
     padding-bottom: 0rem;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
@@ -40,14 +40,17 @@ section[data-testid="stSidebar"] {
 /* 標題樣式（放在參數設定上方的小字）*/
 .app-title {
     color: #A07C8C !important;
-    font-weight: 600 !important;
-    font-size: 1.3rem !important; /* 比 st.title 小一些 */
+    font-weight: 500 !important;
+    font-size: 2rem !important; /* 比 st.title 小一些 */
     line-height: 1.1;
     margin-bottom: 0.6rem !important;
     word-break: break-word !important;
     white-space: normal !important;
     font-family: "Noto Sans TC", "PingFang TC", "Hiragino Sans", "Noto Sans JP", "Helvetica Neue", sans-serif !important;
-}
+    text-align: center !important; /* 置中 */
+    display: block !important;
+    width: 100% !important;
+    }
 
 /* 🎯 最終修正 1: 大標題 CSS 調整，確保完整顯示中文標題（移除 brittle hashed-class-only 規則） */
 h1, .stAppHeader h1, .st-emotion-cache-10trblm, .css-10trblm {
@@ -125,12 +128,23 @@ button[kind="primary"]:hover,
     background-color: #B28FB2 !important;
 }
 
-/* Metric 主字：粉紫強調 */
-.css-1r6rthg {
-    color: #A07C8C !important;
+/* 綠色框框修改：Metric 主字變小，防止截斷，並維持深色 */
+.css-1r6rthg, [data-testid="stMetricValue"] div {
+    color: #5F5A58 !important;       /* 改為深灰/黑色 */
     font-weight: 600 !important;
+    font-size: 1.2rem !important;    /* 縮小字體 */
+    white-space: normal !important;  /* 允許換行 */
+    overflow: visible !important;    /* 顯示完整文字 */
+    line-height: 1.3 !important;
+    word-wrap: break-word !important;
 }
-</style>
+
+/* 🎯 最終修正 3：在小螢幕上隱藏 Plotly 圖例（圖例的 CSS 類是 .legend） */
+@media (max-width: 768px) {
+    .modebar-container, .infolayer .legend {
+        display: none !important;
+    }
+}
 """
 
 # ==================== 頁面配置與 CSS 注入 ====================
@@ -654,8 +668,7 @@ def render_volatility_plots(valid_data, current):
 def render_input_sidebar(initial_stock_input, initial_period_type):
     
     with st.container():
-        st.markdown("### 樂活五線譜")
-        
+
         stock_input = st.text_input("輸入股票代碼", value=initial_stock_input, key="stock_input_key")
 
         period_options = {
