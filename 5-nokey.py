@@ -412,61 +412,66 @@ def get_stock_data_yfinance(symbol, start_date, end_date, market='US'):
 
 def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=None):
     """
-    智能獲取股票數據（自動判斷市場和資料來源）
-    會先判斷市場：台股則優先 FinMind（若提供 token 且 data_source 為 auto），否則用 yfinance。
-    回傳 (DataFrame, stock_name, actual_symbol)
+    智能獲取股票數據：歷史資料 yfinance download + 即時價格 yf.Ticker.info（台股/美股統一）
     """
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days + 500)
     normalized_input = stock_input.strip()
     market = detect_market(normalized_input)
-    
-    # 決定使用的資料來源
-    if data_source == 'auto':
-        if market == 'TW' and finmind_token and finmind_token.strip():
-            actual_source = 'finmind'
-        else:
-            actual_source = 'yfinance'
-    else:
-        actual_source = data_source
-    
-    df = None
-    actual_symbol = normalized_input
-    
-    # 先嘗試 FinMind (只對台股)
-    if actual_source == 'finmind' and market == 'TW':
-        df = get_tw_stock_data_finmind(normalized_input, start_date, end_date, api_token=finmind_token)
+
+    # --- 決定帶後綴的 symbol ---
+    sym = normalized_input
+    if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
+        sym = f"{sym}.TW"
+
+    # --- 步驟 A: 用 yfinance download 拿歷史日線 ---
+    df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
+    actual_symbol = sym
+
+    # .TW 失敗才試 .TWO
+    if df is None and market == 'TW' and sym.endswith('.TW'):
+        sym2 = sym.replace('.TW', '.TWO')
+        df = get_stock_data_yfinance(sym2, start_date, end_date, market=market)
         if df is not None:
-            # FinMind 回傳的 index 為日期且欄位為 Open/High/Low/Close/Volume
-            actual_symbol = normalized_input.replace('.TW','').replace('.TWO','').strip()
-    # 否則使用 yfinance
-    if df is None:
-        sym = normalized_input
-        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
-            sym = f"{sym}.TW"
-        df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
-        actual_symbol = sym
-        # 若台股 yfinance 失敗，再嘗試 .TWO
-        if df is None and market == 'TW' and not sym.endswith('.TWO'):
-            sym2 = sym.replace('.TW','') + '.TWO'
-            df = get_stock_data_yfinance(sym2, start_date, end_date, market=market)
-            if df is not None:
-                actual_symbol = sym2
-    
+            actual_symbol = sym2
+
     if df is None or df.empty:
         return pd.DataFrame(), None, normalized_input
-    
-    # 嘗試取得名稱（以 yfinance 為主）
-    stock_name = None
+
+    # --- 步驟 B: 用 yf.Ticker.info 一次拿「股票名稱」＋「即時價格」---
+    stock_name = normalized_input  # 預設
     try:
-        info_ticker = yf.Ticker(actual_symbol)
-        info = info_ticker.info
-        stock_name = info.get('longName') or info.get('shortName') or normalized_input
+        ticker_info = yf.Ticker(actual_symbol).info
+
+        # B-1: 股票名稱
+        stock_name = ticker_info.get('longName') or ticker_info.get('shortName') or normalized_input
+
+        # B-2: 即時價格補丁（regularMarketPrice 在盤中就是當前價，盤後就是收盤價）
+        rt_price = ticker_info.get('regularMarketPrice')
+        if rt_price is not None:
+            rt_open   = ticker_info.get('regularMarketOpen', rt_price)
+            rt_high   = ticker_info.get('dayHigh', rt_price)
+            rt_low    = ticker_info.get('dayLow', rt_price)
+            rt_volume = ticker_info.get('regularMarketVolume', 0)
+
+            today_date = pd.Timestamp(datetime.now().date())
+            if df.index.tz is not None:
+                today_date = today_date.tz_localize(df.index.tz)
+
+            new_row = pd.DataFrame({
+                'Open':   [float(rt_open)],
+                'High':   [float(rt_high)],
+                'Low':    [float(rt_low)],
+                'Close':  [float(rt_price)],
+                'Volume': [int(rt_volume)]
+            }, index=[today_date])
+
+            df = pd.concat([df[df.index < today_date], new_row])
     except:
-        stock_name = normalized_input
-    
-    # 確保欄位名稱與原本程式一致（Open/High/Low/Close/Volume）
+        pass  # 補丁或取名失敗都不影響後續
+
     return df, stock_name, actual_symbol
+
 
 # 輔助：買賣訊號判斷
 def generate_signals(current, valid_data, sd_level, slope):
