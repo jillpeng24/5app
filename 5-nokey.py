@@ -5,6 +5,8 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import requests
+import shioaji as sj
+import time
 
 # =========================================================
 # 🌸 B — Sakura Latte Theme（櫻花霧面奶茶主題）- 最終版
@@ -146,6 +148,27 @@ st.set_page_config(page_title="樂活五線譜", layout="wide")
 
 # 注入自訂 CSS
 st.markdown(custom_css, unsafe_allow_html=True)
+
+# ==================== 🚀 永豐 API 初始化 (讀取雲端 st.secrets) ====================
+@st.cache_resource
+def init_api():
+    api = sj.Shioaji()
+    try:
+        api.login(
+            api_key=st.secrets["SHIOAJI_API_KEY"],
+            secret_key=st.secrets["SHIOAJI_SECRET_KEY"]
+        )
+        # 等待合約下載防呆
+        timeout = 10
+        start = time.time()
+        while not api.Contracts.Stocks:
+            time.sleep(0.5)
+            if time.time() - start > timeout: break
+        return api
+    except Exception as e:
+        return None
+
+api = init_api()
 
 
 # ==================== 🌟 核心計算函數 (移至頂部，確保定義正確) 🌟 ====================
@@ -295,21 +318,9 @@ def detect_market(symbol):
 def get_tw_stock_data_finmind(symbol, start_date, end_date, api_token=None):
     """
     使用 FinMind API 獲取台股歷史數據（備援方法）
-    
-    Args:
-        symbol: 台股代碼（如：2330 或 2330.TW）
-        start_date: 起始日期 (datetime)
-        end_date: 結束日期 (datetime)
-        api_token: FinMind API Token（可選）
-    
-    Returns:
-        DataFrame or None: index 為 datetime 的 DataFrame (Open/High/Low/Close/Volume) 或 None
     """
     try:
-        # 移除.TW後綴（如果有）
         clean_symbol = symbol.replace('.TW', '').replace('.TWO', '').strip()
-        
-        # 構建API請求URL
         url = "https://api.finmindtrade.com/api/v4/data"
         params = {
             "dataset": "TaiwanStockPrice",
@@ -317,50 +328,28 @@ def get_tw_stock_data_finmind(symbol, start_date, end_date, api_token=None):
             "start_date": start_date.strftime('%Y-%m-%d'),
             "end_date": end_date.strftime('%Y-%m-%d')
         }
-        
-        # 如果有提供API token，加入參數
         if api_token and api_token.strip():
             params["token"] = api_token
         
-        # 發送API請求
         response = requests.get(url, params=params, timeout=15)
         response.raise_for_status()
-        
         data = response.json()
         
-        # 檢查回應狀態
         if data.get('status') != 200 or not data.get('data'):
             return None
         
-        # 轉換為DataFrame
         df = pd.DataFrame(data['data'])
-        
-        # 重命名欄位以符合標準格式
         df = df.rename(columns={
-            'date': 'date',
-            'open': 'open',
-            'max': 'high',
-            'min': 'low',
-            'close': 'close',
-            'Trading_Volume': 'volume'
+            'date': 'date', 'open': 'open', 'max': 'high', 'min': 'low',
+            'close': 'close', 'Trading_Volume': 'volume'
         })
-        
-        # 選擇需要的欄位
         df = df[['date', 'open', 'high', 'low', 'close', 'volume']]
-        
-        # 轉換日期格式
         df['date'] = pd.to_datetime(df['date'])
-        
-        # 轉換數值格式
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # 按日期排序並設置 index
         df = df.sort_values('date').set_index('date')
-        
-        # 調整欄位名稱以符合後續程式（首字大寫）
         df.rename(columns=lambda x: x.capitalize(), inplace=True)
-        
         return df
         
     except Exception as e:
@@ -369,15 +358,6 @@ def get_tw_stock_data_finmind(symbol, start_date, end_date, api_token=None):
 def get_stock_data_yfinance(symbol, start_date, end_date, market='US'):
     """
     使用 yfinance 獲取股票歷史數據（支援美股和台股）
-    
-    Args:
-        symbol: 股票代碼
-        start_date: 起始日期 (datetime)
-        end_date: 結束日期 (datetime)
-        market: 市場類型 ('US' 或 'TW')
-    
-    Returns:
-        DataFrame or None: index 為 datetime 的 DataFrame (Open/High/Low/Close/Volume)
     """
     try:
         sym = symbol.strip().upper()
@@ -412,61 +392,91 @@ def get_stock_data_yfinance(symbol, start_date, end_date, market='US'):
 
 def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=None):
     """
-    智能獲取股票數據（自動判斷市場和資料來源）
-    會先判斷市場：台股則優先 FinMind（若提供 token 且 data_source 為 auto），否則用 yfinance。
-    回傳 (DataFrame, stock_name, actual_symbol)
+    智能獲取股票數據：歷史資料優先永豐API(台股) / yfinance download (美股) + 即時價格補丁
     """
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days + 500)
     normalized_input = stock_input.strip()
     market = detect_market(normalized_input)
-    
-    # 決定使用的資料來源
-    if data_source == 'auto':
-        if market == 'TW' and finmind_token and finmind_token.strip():
-            actual_source = 'finmind'
-        else:
-            actual_source = 'yfinance'
-    else:
-        actual_source = data_source
-    
+
     df = None
     actual_symbol = normalized_input
-    
-    # 先嘗試 FinMind (只對台股)
-    if actual_source == 'finmind' and market == 'TW':
-        df = get_tw_stock_data_finmind(normalized_input, start_date, end_date, api_token=finmind_token)
-        if df is not None:
-            # FinMind 回傳的 index 為日期且欄位為 Open/High/Low/Close/Volume
-            actual_symbol = normalized_input.replace('.TW','').replace('.TWO','').strip()
-    # 否則使用 yfinance
-    if df is None:
-        sym = normalized_input
-        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
-            sym = f"{sym}.TW"
+
+    # --- 決定帶後綴的 symbol (給 yfinance 備援與補丁使用) ---
+    sym = normalized_input
+    if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
+        sym = f"{sym}.TW"
+
+    # --- 步驟 A-1: 如果是台股，優先嘗試使用永豐 API 抓取歷史數據 ---
+    if market == 'TW' and api:
+        try:
+            clean_sym = normalized_input.replace('.TW', '').replace('.TWO', '').strip()
+            contract = api.Contracts.Stocks[clean_sym]
+            if contract:
+                kbars = api.kbars(contract, start=start_date.strftime("%Y-%m-%d"))
+                df_sj = pd.DataFrame({**kbars})
+                if not df_sj.empty:
+                    df_sj.index = pd.to_datetime(df_sj.ts)
+                    df_sj = df_sj[['Open', 'High', 'Low', 'Close', 'Volume']]
+                    df = df_sj
+                    actual_symbol = clean_sym # 成功用永豐抓取，更新代碼為純數字
+        except:
+            pass # 如果永豐失敗，就會繼續往下走 yfinance
+
+    # --- 步驟 A-2: 永豐沒有抓到，或是非台股，使用 yfinance download 拿歷史日線 ---
+    if df is None or df.empty:
         df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
         actual_symbol = sym
-        # 若台股 yfinance 失敗，再嘗試 .TWO
-        if df is None and market == 'TW' and not sym.endswith('.TWO'):
-            sym2 = sym.replace('.TW','') + '.TWO'
+
+        # .TW 失敗才試 .TWO
+        if df is None and market == 'TW' and sym.endswith('.TW'):
+            sym2 = sym.replace('.TW', '.TWO')
             df = get_stock_data_yfinance(sym2, start_date, end_date, market=market)
             if df is not None:
                 actual_symbol = sym2
-    
+
     if df is None or df.empty:
         return pd.DataFrame(), None, normalized_input
-    
-    # 嘗試取得名稱（以 yfinance 為主）
-    stock_name = None
+
+    # --- 步驟 B: 用 yf.Ticker.info 一次拿「股票名稱」＋「即時價格」---
+    stock_name = normalized_input  # 預設
     try:
-        info_ticker = yf.Ticker(actual_symbol)
-        info = info_ticker.info
-        stock_name = info.get('longName') or info.get('shortName') or normalized_input
+        # 對於 yfinance info 查詢，台股還是需要加上後綴
+        info_sym = actual_symbol
+        if market == 'TW' and not actual_symbol.endswith('.TW') and not actual_symbol.endswith('.TWO'):
+            info_sym = f"{actual_symbol}.TW"
+
+        ticker_info = yf.Ticker(info_sym).info
+
+        # B-1: 股票名稱
+        stock_name = ticker_info.get('longName') or ticker_info.get('shortName') or normalized_input
+
+        # B-2: 即時價格補丁（regularMarketPrice 在盤中就是當前價，盤後就是收盤價）
+        rt_price = ticker_info.get('regularMarketPrice')
+        if rt_price is not None:
+            rt_open   = ticker_info.get('regularMarketOpen', rt_price)
+            rt_high   = ticker_info.get('dayHigh', rt_price)
+            rt_low    = ticker_info.get('dayLow', rt_price)
+            rt_volume = ticker_info.get('regularMarketVolume', 0)
+
+            today_date = pd.Timestamp(datetime.now().date())
+            if df.index.tz is not None:
+                today_date = today_date.tz_localize(df.index.tz)
+
+            new_row = pd.DataFrame({
+                'Open':   [float(rt_open)],
+                'High':   [float(rt_high)],
+                'Low':    [float(rt_low)],
+                'Close':  [float(rt_price)],
+                'Volume': [int(rt_volume)]
+            }, index=[today_date])
+
+            df = pd.concat([df[df.index < today_date], new_row])
     except:
-        stock_name = normalized_input
-    
-    # 確保欄位名稱與原本程式一致（Open/High/Low/Close/Volume）
+        pass  # 補丁或取名失敗都不影響後續
+
     return df, stock_name, actual_symbol
+
 
 # 輔助：買賣訊號判斷
 def generate_signals(current, valid_data, sd_level, slope):
