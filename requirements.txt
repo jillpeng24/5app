@@ -1,8 +1,12 @@
 # Streamlit 核心
 streamlit
+yfinance
 pandas
 numpy
 plotly
+requests
+shioaji
+python-dotenv
 
 # 股票資料庫
 yfinance
