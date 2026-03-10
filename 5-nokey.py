@@ -326,15 +326,23 @@ def get_stock_data_auto(stock_input, days):
             rt_price = ticker_info.get('regularMarketPrice')
             if rt_price is not None and not df.empty:
                 today_date = pd.Timestamp(datetime.now().date())
+                rt_volume = int(ticker_info.get('regularMarketVolume', 0))
                 if df.index[-1].date() != today_date.date():
+                    # 今天尚無資料，新增一列
                     new_row = pd.DataFrame({
                         'Open':   [float(ticker_info.get('regularMarketOpen', rt_price))],
                         'High':   [float(ticker_info.get('dayHigh', rt_price))],
                         'Low':    [float(ticker_info.get('dayLow', rt_price))],
                         'Close':  [float(rt_price)],
-                        'Volume': [int(ticker_info.get('regularMarketVolume', 0))]
+                        'Volume': [rt_volume]
                     }, index=[today_date])
                     df = pd.concat([df, new_row])
+                elif rt_volume > 0:
+                    # 今天已有資料但可能是舊的，強制用即時價更新
+                    df.iloc[-1, df.columns.get_loc('High')] = max(float(df['High'].iloc[-1]), float(ticker_info.get('dayHigh', rt_price)))
+                    df.iloc[-1, df.columns.get_loc('Low')]  = min(float(df['Low'].iloc[-1]),  float(ticker_info.get('dayLow', rt_price)))
+                    df.iloc[-1, df.columns.get_loc('Close')] = float(rt_price)
+                    df.iloc[-1, df.columns.get_loc('Volume')] = rt_volume
         except: pass
     
     if df is None or df.empty: return pd.DataFrame(), None, normalized_input
