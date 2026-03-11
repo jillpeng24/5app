@@ -154,32 +154,60 @@ st.markdown(custom_css, unsafe_allow_html=True)
 # ==================== 🚀 永豐 API 初始化 (支援雲端與本機) ====================
 @st.cache_resource
 def init_api():
-    api = sj.Shioaji()
+    import os
+    from dotenv import load_dotenv
+    import shioaji as sj
+    import time
+    
+    # 1. 強制使用「絕對路徑」，確保它絕對不會迷路去找 .env
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    env_path = os.path.join(current_dir, "config", ".env")
+    load_dotenv(dotenv_path=env_path)
+
+    # 2. 安全取值：先找本機 .env，找不到才去問 Streamlit Secrets (雲端)
+    api_key = os.getenv("SHIOAJI_API_KEY")
+    secret_key = os.getenv("SHIOAJI_SECRET_KEY")
+    
+    if not api_key:
+        try:
+            api_key = st.secrets["SHIOAJI_API_KEY"]
+            secret_key = st.secrets["SHIOAJI_SECRET_KEY"]
+        except Exception:
+            pass
+
+    # 如果連第一關都沒過 (找不到字串)
+    if not api_key or not secret_key:
+        print("❌ [後台偵錯] 致命錯誤：完全抓不到任何金鑰字串！")
+        return None
+
+    # 3. 如果有抓到字串，開始嘗試登入
     try:
-        load_dotenv(dotenv_path="config/.env")
-        api_key = st.secrets.get("SHIOAJI_API_KEY", os.getenv("SHIOAJI_API_KEY"))
-        secret_key = st.secrets.get("SHIOAJI_SECRET_KEY", os.getenv("SHIOAJI_SECRET_KEY"))
-        
-        # 加上檢查，如果金鑰是空的，直接在網頁上跳出警告！
-        if not api_key or not secret_key:
-            st.toast("⚠️ 找不到永豐金鑰，目前使用 Yahoo 延遲報價，請檢查 Secrets 設定", icon="⚠️")
-            return None
-            
+        print("⏳ [後台偵錯] 找到金鑰了！正在嘗試登入永豐 API...")
+        api = sj.Shioaji()
         api.login(api_key, secret_key)
         
         timeout = 10
         start = time.time()
         while not api.Contracts.Stocks:
             time.sleep(0.5)
-            if time.time() - start > timeout: break
+            if time.time() - start > timeout: 
+                print("❌ [後台偵錯] 登入成功，但下載股票合約超時 (Timeout)！")
+                break
+                
+        print("✅ [後台偵錯] 永豐 API 登入與合約下載成功！")
         return api
         
     except Exception as e:
-        # 如果登入失敗(如額度用完、密碼錯)，在網頁跳出錯誤訊息
-        st.toast(f"⚠️ 永豐 API 連線失敗: {str(e)}，切換為歷史報價", icon="❌")
+        # 這裡會把永豐伺服器吐出來的「真正死因」印出來
+        print(f"❌ [後台偵錯] 永豐登入失敗，真正死因：{str(e)}")
         return None
 
 api = init_api()
+
+# 🎯 把防呆警告移到外面！而且用 session_state 確保只會吵你一次
+if api is None and "api_warned" not in st.session_state:
+    st.toast("⚠️ 找不到永豐金鑰或連線失敗，目前使用 Yahoo 歷史報價", icon="⚠️")
+    st.session_state.api_warned = True
 
 
 # ==================== 🌟 核心計算函數 (移至頂部，確保定義正確) 🌟 ====================
@@ -715,7 +743,17 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
     
     with st.container():
 
-        stock_input = st.text_input("輸入股票代碼", value=initial_stock_input, key="stock_input_key")
+        # 👈 新增：下拉選單的選項清單
+        stock_list = ["00631L", "00675L", "QQQ", "QLD", "TQQQ"]
+        
+        # 確保初始值有在清單裡面，否則預設選第二個 (00675L)
+        if initial_stock_input in stock_list:
+            default_idx = stock_list.index(initial_stock_input)
+        else:
+            default_idx = 1
+            
+        # 👈 把原本的 text_input 換成 selectbox
+        stock_input = st.selectbox("選擇股票代碼", stock_list, index=default_idx, key="stock_input_key")
 
         period_options = {
             "短期 (0.5年)": 0.5,
@@ -767,8 +805,13 @@ def render_analysis_main(stock_input, start_date, end_date, analyze_button):
             return
         
         try:
+            # 🎯 防呆機制搬來這裡！(確保只有在真正按下按鈕分析時才檢查)
+            if api is None and "api_warned" not in st.session_state:
+                st.toast("⚠️ 找不到永豐金鑰或連線失敗，目前使用 Yahoo 歷史報價", icon="⚠️")
+                st.session_state.api_warned = True
+
             with st.spinner("📥 正在下載與計算資料..."):
-                # 1. 確保往前抓足夠的資料 (包含指定的開始日，再加 500 天算均線緩衝)
+                # 1. 確保往前抓足夠的資料...(包含指定的開始日，再加 500 天算均線緩衝)
                 fetch_days = (datetime.now().date() - start_date).days
                 stock_data, stock_name, stock_symbol_actual = get_stock_data_auto(stock_input, fetch_days, data_source='auto', finmind_token=FINMIND_TOKEN)
                 
@@ -896,9 +939,9 @@ def render_analysis_main(stock_input, start_date, end_date, analyze_button):
 
 # 設置狀態來保持輸入區塊的初始值
 if 'stock_input_value' not in st.session_state:
-    st.session_state.stock_input_value = "00675L"
+    st.session_state.stock_input_value = "00631L"
 if 'period_type_value' not in st.session_state:
-    st.session_state.period_type_value = "長期 (3.5年)"
+    st.session_state.period_type_value = "短期 (0.5年)"
 
 # 創建 PC 上的兩欄佈局
 col_left, col_right = st.columns([1, 2.5]) 
