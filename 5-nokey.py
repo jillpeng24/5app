@@ -673,7 +673,7 @@ def render_oscillator_plots(valid_data):
     fig4.update_layout(title="KD 隨機指標", height=300, hovermode='x unified', template='plotly_white')
     st.plotly_chart(fig4, use_container_width=True)
 
-ddef render_volatility_plots(valid_data, current):
+def render_volatility_plots(valid_data, current):
     st.markdown("### 波動與趨勢動能 (ADX, BBW, %R)")
     
     col_adx, col_bbw, col_williams, col_v_ratio = st.columns(4)
