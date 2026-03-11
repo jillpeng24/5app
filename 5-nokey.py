@@ -646,7 +646,7 @@ def render_lohas_plot(valid_data, current_price, current_ma20w):
     st.plotly_chart(fig2, use_container_width=True)
 
 def render_oscillator_plots(valid_data):
-    st.markdown("### 📊 震盪指標 (MA, RSI, KD,)")
+    st.markdown("### 📊 震盪指標 (MA, RSI, KD)")
     
     fig_ma = go.Figure()
     fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#8A6F68', width=2)))
@@ -673,12 +673,15 @@ def render_oscillator_plots(valid_data):
     fig4.update_layout(title="KD 隨機指標", height=300, hovermode='x unified', template='plotly_white')
     st.plotly_chart(fig4, use_container_width=True)
 
-def render_volatility_plots(valid_data, current):
+ddef render_volatility_plots(valid_data, current):
     st.markdown("### 波動與趨勢動能 (ADX, BBW, %R)")
     
-    col_williams, col_bbw_ratio = st.columns(2)
+    col_adx, col_bbw, col_williams, col_v_ratio = st.columns(4)
+    
+    col_adx.metric("當前 ADX (強度)", f"{current['ADX']:.1f}")
+    col_bbw.metric("當前 BBW (帶寬)", f"{current['BBW'] * 100:.2f}%")
     col_williams.metric("當前威廉 %R", f"{current['%R']:.2f}%")
-    col_bbw_ratio.metric("當前成交量比", f"{current['Volume_Ratio']:.2f}倍均量")
+    col_v_ratio.metric("成交量比", f"{current['Volume_Ratio']:.2f}倍")
     
     st.markdown("---")
     
