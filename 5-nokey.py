@@ -5,6 +5,10 @@ import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import requests
+import shioaji as sj  
+import time            
+import os              
+from dotenv import load_dotenv 
 
 # =========================================================
 # 🌸 B — Sakura Latte Theme（櫻花霧面奶茶主題）- 最終版
@@ -146,6 +150,30 @@ st.set_page_config(page_title="樂活五線譜", layout="wide")
 
 # 注入自訂 CSS
 st.markdown(custom_css, unsafe_allow_html=True)
+
+# ==================== 🚀 永豐 API 初始化 (支援雲端與本機) ====================
+@st.cache_resource
+def init_api():
+    api = sj.Shioaji()
+    try:
+        # 優先讀取雲端 st.secrets，若無則讀取本機 .env 檔案
+        load_dotenv(dotenv_path="config/.env")
+        api_key = st.secrets.get("SHIOAJI_API_KEY", os.getenv("SHIOAJI_API_KEY"))
+        secret_key = st.secrets.get("SHIOAJI_SECRET_KEY", os.getenv("SHIOAJI_SECRET_KEY"))
+        
+        api.login(api_key, secret_key)
+        
+        # 等待合約下載完成
+        timeout = 10
+        start = time.time()
+        while not api.Contracts.Stocks:
+            time.sleep(0.5)
+            if time.time() - start > timeout: break
+        return api
+    except Exception as e:
+        return None
+
+api = init_api()
 
 
 # ==================== 🌟 核心計算函數 (移至頂部，確保定義正確) 🌟 ====================
@@ -411,50 +439,66 @@ def get_stock_data_yfinance(symbol, start_date, end_date, market='US'):
         return None
 
 def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=None):
-    """
-    智能獲取股票數據（自動判斷市場和資料來源）
-    會先判斷市場：台股則優先 FinMind（若提供 token 且 data_source 為 auto），否則用 yfinance。
-    回傳 (DataFrame, stock_name, actual_symbol)
-    """
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days + 500)
     normalized_input = stock_input.strip()
     market = detect_market(normalized_input)
     
-    # 決定使用的資料來源
-    if data_source == 'auto':
-        if market == 'TW' and finmind_token and finmind_token.strip():
-            actual_source = 'finmind'
-        else:
-            actual_source = 'yfinance'
-    else:
-        actual_source = data_source
+    # 1. 歷史資料：統一用 Yahoo Finance 抓 3.5 年 (為了算五線譜)
+    sym = normalized_input
+    if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
+        sym = f"{sym}.TW"
     
-    df = None
-    actual_symbol = normalized_input
+    df = yf.download(sym, start=start_date, end=end_date, progress=False)
     
-    # 先嘗試 FinMind (只對台股)
-    if actual_source == 'finmind' and market == 'TW':
-        df = get_tw_stock_data_finmind(normalized_input, start_date, end_date, api_token=finmind_token)
-        if df is not None:
-            # FinMind 回傳的 index 為日期且欄位為 Open/High/Low/Close/Volume
-            actual_symbol = normalized_input.replace('.TW','').replace('.TWO','').strip()
-    # 否則使用 yfinance
-    if df is None:
-        sym = normalized_input
-        if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
-            sym = f"{sym}.TW"
-        df = get_stock_data_yfinance(sym, start_date, end_date, market=market)
-        actual_symbol = sym
-        # 若台股 yfinance 失敗，再嘗試 .TWO
-        if df is None and market == 'TW' and not sym.endswith('.TWO'):
-            sym2 = sym.replace('.TW','') + '.TWO'
-            df = get_stock_data_yfinance(sym2, start_date, end_date, market=market)
-            if df is not None:
-                actual_symbol = sym2
-    
-    if df is None or df.empty:
-        return pd.DataFrame(), None, normalized_input
+    # 若 .TW 失敗則嘗試 .TWO
+    if (df is None or df.empty) and market == 'TW' and sym.endswith('.TW'):
+        sym2 = sym.replace('.TW', '.TWO')
+        df = yf.download(sym2, start=start_date, end=end_date, progress=False)
+        if df is not None and not df.empty: sym = sym2
+
+    if df is None or df.empty: return pd.DataFrame(), None, normalized_input
+
+    # 整理資料格式
+    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+    df.index = pd.to_datetime(df.index)
+    df.rename(columns=lambda x: x.capitalize(), inplace=True)
+    df = df[['Open','High','Low','Close','Volume']]
+
+    # 2. 即時補丁：如果是台股，呼叫永豐 API 抓最新的那一秒報價
+    if market == 'TW' and api:
+        try:
+            clean_sym = normalized_input.replace('.TW', '').replace('.TWO', '').strip()
+            contract = api.Contracts.Stocks[clean_sym]
+            if contract:
+                snap = api.snapshots([contract])[0]
+                if snap.total_volume > 0:
+                    today_date = pd.Timestamp(datetime.now().date())
+                    if df.index.tz is not None: today_date = today_date.tz_localize(df.index.tz)
+                    
+                    # 換算成交量 (永豐張數 * 1000 = 股數)
+                    sj_vol = snap.total_volume * 1000
+                    
+                    if df.index[-1].date() != today_date.date():
+                        # 新增今天的一根 K 線
+                        new_row = pd.DataFrame({
+                            'Open': [snap.open], 'High': [snap.high], 'Low': [snap.low],
+                            'Close': [snap.close], 'Volume': [sj_vol]
+                        }, index=[today_date])
+                        df = pd.concat([df, new_row])
+                    else:
+                        # 覆蓋更新今天已存在的資料
+                        df.iloc[-1, df.columns.get_loc('High')] = max(df['High'].iloc[-1], snap.high)
+                        df.iloc[-1, df.columns.get_loc('Low')] = min(df['Low'].iloc[-1], snap.low)
+                        df.iloc[-1, df.columns.get_loc('Close')] = snap.close
+                        df.iloc[-1, df.columns.get_loc('Volume')] = sj_vol
+        except: pass
+
+    # 3. 抓取名稱
+    try: name = yf.Ticker(sym).info.get('longName', normalized_input)
+    except: name = normalized_input
+        
+    return df, name, sym
     
     # 嘗試取得名稱（以 yfinance 為主）
     stock_name = None
@@ -705,7 +749,7 @@ def render_input_sidebar(initial_stock_input, initial_period_type):
 # ----------------------------------------------------
 # 🌟 主要內容分析區 (右欄內容)
 # ----------------------------------------------------
-def render_analysis_main(stock_input, days, analyze_button):
+def render_analysis_main(stock_input, start_date, end_date, analyze_button):
     if analyze_button or st.session_state.get('app_initialized', False):
         st.session_state.app_initialized = True
         
@@ -715,68 +759,80 @@ def render_analysis_main(stock_input, days, analyze_button):
         
         try:
             with st.spinner("📥 正在下載與計算資料..."):
-                # 使用新版的取得函數（支援台股/美股）
-                stock_data, stock_name, stock_symbol_actual = get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=FINMIND_TOKEN)
+                # 1. 確保往前抓足夠的資料 (包含指定的開始日，再加 500 天算均線緩衝)
+                fetch_days = (datetime.now().date() - start_date).days
+                stock_data, stock_name, stock_symbol_actual = get_stock_data_auto(stock_input, fetch_days, data_source='auto', finmind_token=FINMIND_TOKEN)
                 
                 if stock_data.empty or stock_symbol_actual is None:
-                    # 如果下載邏輯正確執行，這裡只會收到一個最終的嚴重錯誤
                     st.error("❌ 無法取得股票資料，請檢查股票代碼是否正確。")
                     return
                 
-                regression_data = stock_data.tail(days).copy().dropna()
+                # === 2. 先用包含歷史緩衝的長資料，把所有技術指標算完 ===
+                df_calc = stock_data.copy()
                 
-                # --- 核心計算 ---
-                x_indices = np.arange(len(regression_data))
-                y_values = regression_data['Close'].values
+                window = 100
+                df_calc['MA20W'] = df_calc['Close'].rolling(window=window, min_periods=window).mean()
+                rolling_std = df_calc['Close'].rolling(window=window, min_periods=window).std()
+                df_calc['UB'] = df_calc['MA20W'] + 2 * rolling_std
+                df_calc['LB'] = df_calc['MA20W'] - 2 * rolling_std
+                df_calc['Zone'] = np.where(df_calc['Close'] > df_calc['MA20W'], '樂活區(多頭)', '毅力區(空頭)')
+
+                df_calc['RSI'] = calculate_rsi(df_calc['Close'], 14)
+                macd, signal, hist = calculate_macd(df_calc['Close'])
+                df_calc['MACD'] = macd
+                df_calc['MACD_Signal'] = signal
+                df_calc['MACD_Hist'] = hist
+                k, d = calculate_kd(df_calc['High'], df_calc['Low'], df_calc['Close'])
+                df_calc['K'] = k
+                df_calc['D'] = d
+                df_calc['MA5'] = df_calc['Close'].rolling(5).mean()
+                df_calc['MA10'] = df_calc['Close'].rolling(10).mean()
+                df_calc['MA20'] = df_calc['Close'].rolling(20).mean()
+                df_calc['MA60'] = df_calc['Close'].rolling(60).mean()
+                df_calc['Volume_MA5'] = df_calc['Volume'].rolling(5).mean()
+                df_calc['Volume_Ratio'] = df_calc['Volume'] / df_calc['Volume_MA5'].replace(0, np.nan)
+                df_calc['RSI_Divergence'] = detect_rsi_divergence(df_calc['Close'], df_calc['RSI'])
+                adx, plus_di, minus_di = calculate_adx(df_calc['High'], df_calc['Low'], df_calc['Close'])
+                df_calc['ADX'] = adx
+                df_calc['+DI'] = plus_di
+                df_calc['-DI'] = minus_di
+                df_calc['BBW'] = calculate_bbw(df_calc['Close'])
+                df_calc['%R'] = calculate_williams_r(df_calc['High'], df_calc['Low'], df_calc['Close'])
+
+                # 砍掉最前面因為算均線而產生的空值
+                df_calc = df_calc.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R', 'MA60'])
+
+                # === 3. 根據「精確的日曆日期」切出使用者要的範圍 ===
+                target_start = pd.Timestamp(start_date)
+                target_end = pd.Timestamp(end_date)
+                if df_calc.index.tz is not None:
+                    target_start = target_start.tz_localize(df_calc.index.tz)
+                    target_end = target_end.tz_localize(df_calc.index.tz)
+
+                valid_data = df_calc[(df_calc.index >= target_start) & (df_calc.index <= target_end)].copy()
+
+                if valid_data.empty: 
+                    st.error("❌ 該區間內資料不足以繪製五線譜 (可能因假日或無交易紀錄)")
+                    return
+
+                # === 4. 只在切好的時間段內，計算專屬的五線譜迴歸線 ===
+                x_indices = np.arange(len(valid_data))
+                y_values = valid_data['Close'].values
                 slope, intercept = np.polyfit(x_indices, y_values, 1)
                 trend_line = slope * x_indices + intercept
-                residuals = y_values - trend_line
-                sd = np.std(residuals)
-                regression_data['TL'] = trend_line
-                regression_data['TL+2SD'] = trend_line + 2 * sd
-                regression_data['TL+1SD'] = trend_line + 1 * sd
-                regression_data['TL-1SD'] = trend_line - 1 * sd
-                regression_data['TL-2SD'] = trend_line - 2 * sd
-                window = 100
-                regression_data['MA20W'] = regression_data['Close'].rolling(window=window, min_periods=window).mean()
-                rolling_std = regression_data['Close'].rolling(window=window, min_periods=window).std()
-                regression_data['UB'] = regression_data['MA20W'] + 2 * rolling_std
-                regression_data['LB'] = regression_data['MA20W'] - 2 * rolling_std
-                regression_data['Zone'] = np.where(regression_data['Close'] > regression_data['MA20W'], '樂活區(多頭)', '毅力區(空頭)')
+                sd = np.std(y_values - trend_line)
 
-                regression_data['RSI'] = calculate_rsi(regression_data['Close'], 14)
-                macd, signal, hist = calculate_macd(regression_data['Close'])
-                regression_data['MACD'] = macd
-                regression_data['MACD_Signal'] = signal
-                regression_data['MACD_Hist'] = hist
-                k, d = calculate_kd(regression_data['High'], regression_data['Low'], regression_data['Close'])
-                regression_data['K'] = k
-                regression_data['D'] = d
-                regression_data['MA5'] = regression_data['Close'].rolling(5).mean()
-                regression_data['MA10'] = regression_data['Close'].rolling(10).mean()
-                regression_data['MA20'] = regression_data['Close'].rolling(20).mean()
-                regression_data['MA60'] = regression_data['Close'].rolling(60).mean()
-                regression_data['Volume_MA5'] = regression_data['Volume'].rolling(5).mean()
-                regression_data['Volume_Ratio'] = regression_data['Volume'] / regression_data['Volume_MA5']
-                regression_data['RSI_Divergence'] = detect_rsi_divergence(regression_data['Close'], regression_data['RSI'])
-                adx, plus_di, minus_di = calculate_adx(regression_data['High'], regression_data['Low'], regression_data['Close'])
-                regression_data['ADX'] = adx
-                regression_data['+DI'] = plus_di
-                regression_data['-DI'] = minus_di
-                bbw = calculate_bbw(regression_data['Close'])
-                regression_data['BBW'] = bbw
-                williams_r = calculate_williams_r(regression_data['High'], regression_data['Low'], regression_data['Close'])
-                regression_data['%R'] = williams_r
-                
-                valid_data = regression_data.dropna(subset=['MA20W', 'UB', 'LB', 'RSI', 'K', 'D', 'ADX', 'BBW', '%R', 'MA60']) 
-                if valid_data.empty: st.error("❌ 資料不足"); return
+                valid_data['TL'] = trend_line
+                valid_data['TL+2SD'] = trend_line + 2 * sd
+                valid_data['TL+1SD'] = trend_line + 1 * sd
+                valid_data['TL-1SD'] = trend_line - 1 * sd
+                valid_data['TL-2SD'] = trend_line - 2 * sd
                 
                 current = valid_data.iloc[-1]
                 slope_dir = "上升" if slope > 0 else "下降"
                 deviation = current['Close'] - current['TL']
                 sd_level = deviation / sd
                 
-                # 🎯 修正 1.3: 移除「及」
                 if sd_level >= 2: fiveline_zone = "極度樂觀"
                 elif sd_level >= 1: fiveline_zone = "樂觀"
                 elif sd_level >= 0: fiveline_zone = "合理區"
@@ -807,7 +863,6 @@ def render_analysis_main(stock_input, days, analyze_button):
                 if sell_signals: st.warning("**賣出理由：**\n" + "\n".join([f"- {s}" for s in sell_signals]))
                 if buy_signals: st.success("**買入理由：**\n" + "\n".join([f"- {s}" for s in buy_signals]))
                 
-                # 🎯 修正 1.4: 移除圖標
                 tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) 
 
                 with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
@@ -825,9 +880,6 @@ def render_analysis_main(stock_input, days, analyze_button):
             import traceback
             st.code(traceback.format_exc())
 
-    else:
-        pass 
-
 
 # ----------------------------------------------------
 # 🌟 主執行區塊
@@ -839,31 +891,27 @@ if 'stock_input_value' not in st.session_state:
 if 'period_type_value' not in st.session_state:
     st.session_state.period_type_value = "長期 (3.5年)"
 
-# 創建 PC 上的兩欄佈局。在手機上會自動變成單欄堆疊。
+# 創建 PC 上的兩欄佈局
 col_left, col_right = st.columns([1, 2.5]) 
 
-# 在左欄加入小字標題（放在「參數設定」上方）以避開 Streamlit header 的遮蓋
 with col_left:
     st.markdown('<div class="app-title">樂活五線譜</div>', unsafe_allow_html=True)
     stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
 
-# 渲染右欄的分析結果區塊
 with col_right:
-    # 從 session_state 中獲取最新的輸入值
     stock_input = st.session_state.stock_input_key if 'stock_input_key' in st.session_state else st.session_state.stock_input_value
     analyze_button = st.session_state.analyze_button_key if 'analyze_button_key' in st.session_state else False
-    
-    # 計算 days 參數 (與 render_input_sidebar 中的邏輯保持一致)
     period_type = st.session_state.period_type_key if 'period_type_key' in st.session_state else st.session_state.period_type_value
     period_options = {"短期 (0.5年)": 0.5,"中期 (1年)": 1.0,"長期 (3.5年)": 3.5,"超長期 (10年)": 10.0}
 
+    # 🎯 關鍵修改：捕捉使用者設定的「絕對日期」而不是只看天數
     if period_type == "自訂期間" and 'start_date_custom_key' in st.session_state:
         start_date = st.session_state.start_date_custom_key
         end_date = st.session_state.end_date_custom_key
-        days = (end_date - start_date).days
     else:
         years = period_options.get(period_type, 3.5)
-        days = int(years * 365)
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=int(years * 365))
     
-    # 確保只在按鈕按下後運行分析
-    render_analysis_main(stock_input, days, analyze_button)
+    # 傳遞真實日期進入分析器
+    render_analysis_main(stock_input, start_date, end_date, analyze_button)
