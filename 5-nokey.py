@@ -646,7 +646,7 @@ def render_lohas_plot(valid_data, current_price, current_ma20w):
     st.plotly_chart(fig2, use_container_width=True)
 
 def render_oscillator_plots(valid_data):
-    st.markdown("### 📊 震盪指標 (RSI, KD, MACD)")
+    st.markdown("### 📊 震盪指標 (MA, RSI, KD,)")
     
     fig_ma = go.Figure()
     fig_ma.add_trace(go.Scatter(x=valid_data.index, y=valid_data['Close'], mode='lines', name='股價', line=dict(color='#8A6F68', width=2)))
