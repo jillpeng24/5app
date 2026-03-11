@@ -156,21 +156,27 @@ st.markdown(custom_css, unsafe_allow_html=True)
 def init_api():
     api = sj.Shioaji()
     try:
-        # 優先讀取雲端 st.secrets，若無則讀取本機 .env 檔案
         load_dotenv(dotenv_path="config/.env")
         api_key = st.secrets.get("SHIOAJI_API_KEY", os.getenv("SHIOAJI_API_KEY"))
         secret_key = st.secrets.get("SHIOAJI_SECRET_KEY", os.getenv("SHIOAJI_SECRET_KEY"))
         
+        # 加上檢查，如果金鑰是空的，直接在網頁上跳出警告！
+        if not api_key or not secret_key:
+            st.toast("⚠️ 找不到永豐金鑰，目前使用 Yahoo 延遲報價，請檢查 Secrets 設定", icon="⚠️")
+            return None
+            
         api.login(api_key, secret_key)
         
-        # 等待合約下載完成
         timeout = 10
         start = time.time()
         while not api.Contracts.Stocks:
             time.sleep(0.5)
             if time.time() - start > timeout: break
         return api
+        
     except Exception as e:
+        # 如果登入失敗(如額度用完、密碼錯)，在網頁跳出錯誤訊息
+        st.toast(f"⚠️ 永豐 API 連線失敗: {str(e)}，切換為歷史報價", icon="❌")
         return None
 
 api = init_api()
