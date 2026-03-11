@@ -483,12 +483,16 @@ def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=Non
     if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
         sym = f"{sym}.TW"
     
-    df = yf.download(sym, start=start_date, end=end_date, progress=False)
+    # 🚨 關鍵修正 1：Yahoo Finance 的 end_date 是「不包含」的！
+    # 必須加一天，才能確保抓到「今天」的 K 棒
+    fetch_end_date = end_date + timedelta(days=1)
+    
+    df = yf.download(sym, start=start_date, end=fetch_end_date, progress=False)
     
     # 若 .TW 失敗則嘗試 .TWO
     if (df is None or df.empty) and market == 'TW' and sym.endswith('.TW'):
         sym2 = sym.replace('.TW', '.TWO')
-        df = yf.download(sym2, start=start_date, end=end_date, progress=False)
+        df = yf.download(sym2, start=start_date, end=fetch_end_date, progress=False)
         if df is not None and not df.empty: sym = sym2
 
     if df is None or df.empty: return pd.DataFrame(), None, normalized_input
@@ -499,7 +503,7 @@ def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=Non
     df.rename(columns=lambda x: x.capitalize(), inplace=True)
     df = df[['Open','High','Low','Close','Volume']]
 
-    # 2. 即時補丁：如果是台股，呼叫永豐 API 抓最新的那一秒報價
+    # 2. 即時補丁 (台股)：呼叫永豐 API 抓最新的那一秒報價
     if market == 'TW' and api:
         try:
             clean_sym = normalized_input.replace('.TW', '').replace('.TWO', '').strip()
@@ -510,41 +514,60 @@ def get_stock_data_auto(stock_input, days, data_source='auto', finmind_token=Non
                     today_date = pd.Timestamp(datetime.now().date())
                     if df.index.tz is not None: today_date = today_date.tz_localize(df.index.tz)
                     
-                    # 換算成交量 (永豐張數 * 1000 = 股數)
                     sj_vol = snap.total_volume * 1000
                     
                     if df.index[-1].date() != today_date.date():
-                        # 新增今天的一根 K 線
                         new_row = pd.DataFrame({
                             'Open': [snap.open], 'High': [snap.high], 'Low': [snap.low],
                             'Close': [snap.close], 'Volume': [sj_vol]
                         }, index=[today_date])
                         df = pd.concat([df, new_row])
                     else:
-                        # 覆蓋更新今天已存在的資料
                         df.iloc[-1, df.columns.get_loc('High')] = max(df['High'].iloc[-1], snap.high)
                         df.iloc[-1, df.columns.get_loc('Low')] = min(df['Low'].iloc[-1], snap.low)
                         df.iloc[-1, df.columns.get_loc('Close')] = snap.close
                         df.iloc[-1, df.columns.get_loc('Volume')] = sj_vol
         except: pass
 
+   # 🚨 關鍵修正 2：美股極速即時補丁 (啟用 fast_info 繞過 15 分鐘延遲)
+    if market == 'US':
+        try:
+            ticker = yf.Ticker(sym)
+            # 使用 fast_info 取得絕對即時現價與成交量
+            rt_price = ticker.fast_info.last_price
+            rt_volume = ticker.fast_info.last_volume
+            
+            today_date = pd.Timestamp(datetime.now().date())
+            if df.index.tz is not None: 
+                today_date = today_date.tz_localize(df.index.tz)
+
+            if not df.empty and df.index[-1].date() == today_date.date():
+                # 若 download 已經抓到今天的 K 棒，用即時現價強化它
+                df.iloc[-1, df.columns.get_loc('Close')] = rt_price
+                # 動態推升最高/最低價
+                if rt_price > df['High'].iloc[-1]:
+                    df.iloc[-1, df.columns.get_loc('High')] = rt_price
+                if rt_price < df['Low'].iloc[-1]:
+                    df.iloc[-1, df.columns.get_loc('Low')] = rt_price
+                # 更新成交量
+                if rt_volume and rt_volume > df['Volume'].iloc[-1]:
+                    df.iloc[-1, df.columns.get_loc('Volume')] = rt_volume
+            else:
+                # 若剛開盤 download 沒抓到今天，我們直接用即時價格建一根新 K 棒
+                new_row = pd.DataFrame({
+                    'Open': [rt_price], 'High': [rt_price], 
+                    'Low': [rt_price], 'Close': [rt_price], 
+                    'Volume': [rt_volume or 0]
+                }, index=[today_date])
+                df = pd.concat([df, new_row])
+        except Exception as e:
+            pass
+            
     # 3. 抓取名稱
     try: name = yf.Ticker(sym).info.get('longName', normalized_input)
     except: name = normalized_input
         
     return df, name, sym
-    
-    # 嘗試取得名稱（以 yfinance 為主）
-    stock_name = None
-    try:
-        info_ticker = yf.Ticker(actual_symbol)
-        info = info_ticker.info
-        stock_name = info.get('longName') or info.get('shortName') or normalized_input
-    except:
-        stock_name = normalized_input
-    
-    # 確保欄位名稱與原本程式一致（Open/High/Low/Close/Volume）
-    return df, stock_name, actual_symbol
 
 # 輔助：買賣訊號判斷
 def generate_signals(current, valid_data, sd_level, slope):
@@ -740,57 +763,55 @@ def render_volatility_plots(valid_data, current):
 # 🌟 參數輸入區 (左欄內容)
 # ----------------------------------------------------
 def render_input_sidebar(initial_stock_input, initial_period_type):
-    
     with st.container():
-
-        # 👈 新增：下拉選單的選項清單
-        stock_list = ["00631L", "00675L", "QQQ", "QLD", "TQQQ"]
         
-        # 確保初始值有在清單裡面，否則預設選第二個 (00675L)
+        # 1. 預設清單加上「自填」選項
+        stock_list = ["00631L", "00675L", "QQQ", "QLD", "TQQQ", "➕ 自填其他代碼"]
+        
+        # 2. 判斷初始值在哪裡 (如果不是預設的，就自動切換到自填)
         if initial_stock_input in stock_list:
             default_idx = stock_list.index(initial_stock_input)
         else:
-            default_idx = 1
+            default_idx = stock_list.index("➕ 自填其他代碼")
             
-        # 👈 把原本的 text_input 換成 selectbox
-        stock_input = st.selectbox("選擇股票代碼", stock_list, index=default_idx, key="stock_input_key")
+        # 主選單
+        selected_option = st.selectbox("選擇或輸入股票代碼：", stock_list, index=default_idx, key="stock_select")
 
+        # 3. 觸發自填邏輯
+        if selected_option == "➕ 自填其他代碼":
+            # 顯示純文字輸入框，並帶入預設值
+            display_val = initial_stock_input if initial_stock_input not in stock_list else ""
+            stock_input = st.text_input("⌨️ 請輸入代碼 (例如 AAPL 或 2330)：", value=display_val, key="stock_manual").strip().upper()
+            
+            # 防呆：如果自填框被清空，預設給 00675L
+            if not stock_input:
+                stock_input = "00675L"
+        else:
+            stock_input = selected_option
+
+        # --- 分析期間設定 (維持原樣) ---
         period_options = {
-            "短期 (0.5年)": 0.5,
-            "中期 (1年)": 1.0,
-            "長期 (3.5年)": 3.5,
-            "超長期 (10年)": 10.0
+            "短期 (0.5年)": 0.5, "中期 (1年)": 1.0, "長期 (3.5年)": 3.5, "超長期 (10年)": 10.0
         }
-        
-        period_type = st.selectbox("選擇分析期間", list(period_options.keys()) + ["自訂期間"], index=list(period_options.keys()).index(initial_period_type), key="period_type_key")
+        period_type = st.selectbox("選擇分析期間", list(period_options.keys()) + ["自訂期間"], 
+                                   index=list(period_options.keys()).index(initial_period_type), 
+                                   key="period_type_key")
 
-        # 🎯 需求 2: 日期顯示移到選擇分析期間下方
         if period_type == "自訂期間":
             col_start, col_end = st.columns(2)
             with col_start:
                 start_date_custom = st.date_input("開始日", value=datetime.now().date() - timedelta(days=365*3), key="start_date_custom_key") 
             with col_end:
                 end_date_custom = st.date_input("結束日", value=datetime.now().date(), key="end_date_custom_key")
-            
             days = (end_date_custom - start_date_custom).days
         else:
             days = int(period_options[period_type] * 365)
-            
-            current_end_date = datetime.now().date()
-            current_start_date = current_end_date - timedelta(days=days)
-            
-            # 🎯 需求 2: 移除粗體，直接顯示日期
-            col_start, col_end = st.columns(2)
-            with col_start:
-                st.markdown(f"開始日：{current_start_date}")
-            with col_end:
-                st.markdown(f"結束日：{current_end_date}")
+            # 這裡把日期文字稍微美化，讓它融入你的櫻花奶茶主題
+            st.markdown(f"<div style='color:#A07C8C; font-size:0.9rem; margin-top:5px; margin-bottom:10px;'>期間：{datetime.now().date() - timedelta(days=days)} ~ {datetime.now().date()}</div>", unsafe_allow_html=True)
         
         st.markdown("---")
-        # 🎯 修正 1.4: 按鈕文字移除 🚀
         analyze_button = st.button("開始分析", type="primary", use_container_width=True, key="analyze_button_key") 
     
-    # 🎯 需求 4: 移除「熱門分析」那一欄
     return stock_input, days, analyze_button
 
 # ----------------------------------------------------
@@ -948,15 +969,19 @@ col_left, col_right = st.columns([1, 2.5])
 
 with col_left:
     st.markdown('<div class="app-title">樂活五線譜</div>', unsafe_allow_html=True)
+    # 這裡會正確吐出你選的或手寫的代碼 (例如 "URA")
     stock_input, days, analyze_button = render_input_sidebar(st.session_state.stock_input_value, st.session_state.period_type_value)
 
 with col_right:
-    stock_input = st.session_state.stock_input_key if 'stock_input_key' in st.session_state else st.session_state.stock_input_value
-    analyze_button = st.session_state.analyze_button_key if 'analyze_button_key' in st.session_state else False
+    # 🚨 關鍵修復：刪除原本會強制覆蓋成 00631L 的舊程式碼
+    # 直接把最新的 stock_input 存起來，這樣重整時才不會跑掉
+    st.session_state.stock_input_value = stock_input
+
+    # 讀取分析期間設定
     period_type = st.session_state.period_type_key if 'period_type_key' in st.session_state else st.session_state.period_type_value
     period_options = {"短期 (0.5年)": 0.5,"中期 (1年)": 1.0,"長期 (3.5年)": 3.5,"超長期 (10年)": 10.0}
 
-    # 🎯 關鍵修改：捕捉使用者設定的「絕對日期」而不是只看天數
+    # 🎯 捕捉使用者設定的「絕對日期」而不是只看天數
     if period_type == "自訂期間" and 'start_date_custom_key' in st.session_state:
         start_date = st.session_state.start_date_custom_key
         end_date = st.session_state.end_date_custom_key
@@ -965,5 +990,5 @@ with col_right:
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=int(years * 365))
     
-    # 傳遞真實日期進入分析器
+    # 將正確的 stock_input (URA) 傳遞進入分析器
     render_analysis_main(stock_input, start_date, end_date, analyze_button)
