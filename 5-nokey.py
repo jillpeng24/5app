@@ -152,7 +152,7 @@ st.set_page_config(page_title="樂活五線譜", layout="wide")
 st.markdown(custom_css, unsafe_allow_html=True)
 
 # ==================== 🚀 永豐 API 初始化 (支援雲端與本機) ====================
-@st.cache_resource
+@st.cache_resource(ttl=43200) # ⏳ 設定 12 小時 (43200秒) 自動過期重連
 def init_api():
     import os
     from dotenv import load_dotenv
