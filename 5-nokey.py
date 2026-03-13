@@ -322,92 +322,86 @@ def get_stock_data_auto(stock_input, days):
     normalized_input = stock_input.strip()
     market = detect_market(normalized_input)
     
-    # 1. 歷史資料：統一用 Yahoo Finance 抓 3.5 年 (為了算五線譜)
+    # --- A. 抓歷史資料 ---
     sym = normalized_input
     if market == 'TW' and '.TW' not in sym and '.TWO' not in sym:
         sym = f"{sym}.TW"
     
-    # 🚨 關鍵修正 1：Yahoo Finance 的 end_date 是「不包含」的！
-    # 必須加一天，才能確保抓到「今天」的 K 棒
-    fetch_end_date = end_date + timedelta(days=1)
-    
-    df = yf.download(sym, start=start_date, end=fetch_end_date, progress=False)
-    
-    # 若 .TW 失敗則嘗試 .TWO
-    if (df is None or df.empty) and market == 'TW' and sym.endswith('.TW'):
-        sym2 = sym.replace('.TW', '.TWO')
-        df = yf.download(sym2, start=start_date, end=fetch_end_date, progress=False)
-        if df is not None and not df.empty: sym = sym2
+    # 這裡多加一個狀態提示，讓你知道他在抓 Yahoo
+    with st.status(f"🚀 正在處理 {sym}...", expanded=False) as status:
+        status.write("📡 正在從 Yahoo Finance 抓取歷史 K 線...")
+        fetch_end_date = end_date + timedelta(days=1)
+        df = yf.download(sym, start=start_date, end=fetch_end_date, progress=False)
+        
+        if (df is None or df.empty) and market == 'TW' and sym.endswith('.TW'):
+            status.write("🔄 嘗試切換至 .TWO 下載...")
+            sym2 = sym.replace('.TW', '.TWO')
+            df = yf.download(sym2, start=start_date, end=fetch_end_date, progress=False)
+            if df is not None and not df.empty: sym = sym2
 
-    if df is None or df.empty: return pd.DataFrame(), None, normalized_input
+        if df is None or df.empty:
+            status.update(label="❌ Yahoo 資料下載失敗", state="error")
+            return pd.DataFrame(), None, normalized_input
 
-    # 整理資料格式
-    if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
-    df.index = pd.to_datetime(df.index)
-    df.rename(columns=lambda x: x.capitalize(), inplace=True)
-    df = df[['Open','High','Low','Close','Volume']]
+        # 整理格式
+        if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
+        df.index = pd.to_datetime(df.index)
+        df.rename(columns=lambda x: x.capitalize(), inplace=True)
+        df = df[['Open','High','Low','Close','Volume']]
+        status.write(f"✅ 已抓到 {len(df)} 筆歷史數據")
 
-    # 2. 即時補丁 (台股)：呼叫永豐 API 抓最新的那一秒報價
-    if market == 'TW' and api:
-        try:
-            clean_sym = normalized_input.replace('.TW', '').replace('.TWO', '').strip()
-            contract = api.Contracts.Stocks[clean_sym]
-            if contract:
-                snap = api.snapshots([contract])[0]
-                if snap.total_volume > 0:
-                    today_date = pd.Timestamp(datetime.now().date())
-                    if df.index.tz is not None: today_date = today_date.tz_localize(df.index.tz)
-                    
-                    sj_vol = snap.total_volume * 1000
-                    
-                    if df.index[-1].date() != today_date.date():
-                        new_row = pd.DataFrame({
-                            'Open': [snap.open], 'High': [snap.high], 'Low': [snap.low],
-                            'Close': [snap.close], 'Volume': [sj_vol]
-                        }, index=[today_date])
-                        df = pd.concat([df, new_row])
-                    else:
-                        df.iloc[-1, df.columns.get_loc('High')] = max(df['High'].iloc[-1], snap.high)
-                        df.iloc[-1, df.columns.get_loc('Low')] = min(df['Low'].iloc[-1], snap.low)
-                        df.iloc[-1, df.columns.get_loc('Close')] = snap.close
-                        df.iloc[-1, df.columns.get_loc('Volume')] = sj_vol
-        except: pass
-
-   # 🚨 關鍵修正 2：美股極速即時補丁 (啟用 fast_info 繞過 15 分鐘延遲)
-    if market == 'US':
-        try:
-            ticker = yf.Ticker(sym)
-            # 使用 fast_info 取得絕對即時現價與成交量
-            rt_price = ticker.fast_info.last_price
-            rt_volume = ticker.fast_info.last_volume
-            
-            today_date = pd.Timestamp(datetime.now().date())
-            if df.index.tz is not None: 
-                today_date = today_date.tz_localize(df.index.tz)
-
-            if not df.empty and df.index[-1].date() == today_date.date():
-                # 若 download 已經抓到今天的 K 棒，用即時現價強化它
-                df.iloc[-1, df.columns.get_loc('Close')] = rt_price
-                # 動態推升最高/最低價
-                if rt_price > df['High'].iloc[-1]:
-                    df.iloc[-1, df.columns.get_loc('High')] = rt_price
-                if rt_price < df['Low'].iloc[-1]:
-                    df.iloc[-1, df.columns.get_loc('Low')] = rt_price
-                # 更新成交量
-                if rt_volume and rt_volume > df['Volume'].iloc[-1]:
-                    df.iloc[-1, df.columns.get_loc('Volume')] = rt_volume
+        # --- B. 台股盤中補丁 (Shioaji) ---
+        if market == 'TW':
+            if not api:
+                status.write("ℹ️ 永豐 API 未連線，將顯示 Yahoo 盤後/延遲資料")
             else:
-                # 若剛開盤 download 沒抓到今天，我們直接用即時價格建一根新 K 棒
-                new_row = pd.DataFrame({
-                    'Open': [rt_price], 'High': [rt_price], 
-                    'Low': [rt_price], 'Close': [rt_price], 
-                    'Volume': [rt_volume or 0]
-                }, index=[today_date])
-                df = pd.concat([df, new_row])
-        except Exception as e:
-            pass
-            
-    # 3. 抓取名稱
+                status.write("💉 正在啟動永豐 API 盤中即時補丁...")
+                try:
+                    clean_sym = normalized_input.replace('.TW', '').replace('.TWO', '').strip()
+                    contract = api.Contracts.Stocks[clean_sym]
+                    if contract:
+                        snap = api.snapshots([contract])[0]
+                        # 確保 snap 有資料
+                        if snap.close > 0:
+                            today_date = pd.Timestamp(datetime.now().date())
+                            if df.index.tz is not None: today_date = today_date.tz_localize(df.index.tz)
+                            
+                            sj_vol = snap.total_volume * 1000 # 確定是張轉股
+                            
+                            # 判斷是新增一列還是更新最後一列
+                            if df.index[-1].date() != today_date.date():
+                                status.write("🆕 發現今日新 K 棒，正在插入...")
+                                new_row = pd.DataFrame({
+                                    'Open': [snap.open], 'High': [snap.high], 'Low': [snap.low],
+                                    'Close': [snap.close], 'Volume': [sj_vol]
+                                }, index=[today_date])
+                                df = pd.concat([df, new_row])
+                            else:
+                                status.write("🆙 正在更新今日最新價格...")
+                                df.iloc[-1, df.columns.get_loc('High')] = max(df['High'].iloc[-1], snap.high)
+                                df.iloc[-1, df.columns.get_loc('Low')] = min(df['Low'].iloc[-1], snap.low)
+                                df.iloc[-1, df.columns.get_loc('Close')] = snap.close
+                                df.iloc[-1, df.columns.get_loc('Volume')] = sj_vol
+                            status.write(f"💎 補丁成功！目前現價：{snap.close}")
+                        else:
+                            status.write("⚠️ 永豐 API 回傳今日成交量為 0，跳過補丁")
+                except Exception as e:
+                    status.write(f"⚠️ 補丁失敗：{e}")
+        
+        # --- C. 美股補丁 (fast_info) ---
+        if market == 'US':
+            status.write("⚡ 正在抓取美股即時價格...")
+            try:
+                ticker = yf.Ticker(sym)
+                rt_price = ticker.fast_info.last_price
+                if rt_price:
+                    df.iloc[-1, df.columns.get_loc('Close')] = rt_price
+                    status.write(f"💎 美股現價已更新：{rt_price:.2f}")
+            except: pass
+
+        status.update(label=f"✅ {sym} 資料準備就緒", state="complete", expanded=False)
+
+    # 抓取名稱
     try: name = yf.Ticker(sym).info.get('longName', normalized_input)
     except: name = normalized_input
         
