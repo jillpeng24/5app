@@ -331,12 +331,12 @@ def get_stock_data_auto(stock_input, days):
     with st.status(f"🚀 正在處理 {sym}...", expanded=False) as status:
         status.write("📡 正在從 Yahoo Finance 抓取歷史 K 線...")
         fetch_end_date = end_date + timedelta(days=1)
-        df = yf.download(sym, start=start_date, end=fetch_end_date, progress=False)
+        df = yf.download(sym, start=start_date, end=fetch_end_date, progress=False, auto_adjust=True)
         
         if (df is None or df.empty) and market == 'TW' and sym.endswith('.TW'):
             status.write("🔄 嘗試切換至 .TWO 下載...")
             sym2 = sym.replace('.TW', '.TWO')
-            df = yf.download(sym2, start=start_date, end=fetch_end_date, progress=False)
+            df = yf.download(sym2, start=start_date, end=fetch_end_date, progress=False, auto_adjust=True)
             if df is not None and not df.empty: sym = sym2
 
         if df is None or df.empty:
@@ -347,7 +347,37 @@ def get_stock_data_auto(stock_input, days):
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
         df.index = pd.to_datetime(df.index)
         df.rename(columns=lambda x: x.capitalize(), inplace=True)
-        df = df[['Open','High','Low','Close','Volume']]
+
+        # ✅ 手動偵測分割斷層並強制還原（Yahoo 未登記分割時的唯一解法）
+        df = df[['Open','High','Low','Close','Volume']].copy()
+        df = df.sort_index()
+
+        # 計算每日收盤價變化率，找出超過 30% 的暴跌點（分割特徵）
+        pct_change = df['Close'].pct_change()
+        split_dates = pct_change[pct_change < -0.3].index.tolist()
+
+        if split_dates:
+            for split_date in split_dates:
+                # 取得該日期的索引位置
+                idx = df.index.get_loc(split_date)
+                
+                # 防呆：如果剛好有重複日期回傳陣列，強制取第一個
+                if isinstance(idx, slice) or isinstance(idx, type(np.array([]))):
+                    idx = np.where(idx)[0][0]
+                    
+                if idx > 0:
+                    price_before = df['Close'].iloc[idx - 1]
+                    price_after = df['Close'].iloc[idx]
+                    ratio = round(price_before / price_after)
+                    
+                    # 只要落差達到 2 倍以上，就判定為分割
+                    if ratio >= 2:
+                        status.write(f"🔀 偵測到分割斷層：{split_date.date()} 約 {ratio}:1，正在還原歷史資料...")
+                        # 價格除以比例
+                        df.loc[df.index < split_date, ['Open','High','Low','Close']] /= ratio
+                        # 成交量乘以比例 (分割後股數變多)
+                        df.loc[df.index < split_date, 'Volume'] *= ratio
+
         status.write(f"✅ 已抓到 {len(df)} 筆歷史數據")
 
         # --- B. 台股盤中補丁 (Shioaji) ---
@@ -519,7 +549,16 @@ def render_fiveline_plot(valid_data, slope_dir, slope):
     fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL'], mode='lines', name='TL', line=dict(color='#BBA6A0', width=2))) # 奶茶灰棕
     fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-1SD'], mode='lines', name='TL-1SD', line=dict(color='#D7CFCB', width=1.8)))
     fig1.add_trace(go.Scatter(x=valid_data.index, y=valid_data['TL-2SD'], mode='lines', name='TL-2SD', line=dict(color='#E5DDDA', width=1.8)))
+    
     fig1.update_layout(title="五線譜走勢圖", height=500, hovermode='x unified', template='plotly_white', showlegend=False)
+    
+    # 🎯 終極修正：找出所有非交易日並在圖表 X 軸上隱藏，讓迴歸線變回絕對筆直！
+    dt_all = pd.date_range(start=valid_data.index[0], end=valid_data.index[-1])
+    dt_obs = [d.strftime("%Y-%m-%d") for d in valid_data.index]
+    dt_breaks = [d for d in dt_all.strftime("%Y-%m-%d").tolist() if d not in dt_obs]
+    
+    fig1.update_xaxes(rangebreaks=[dict(values=dt_breaks)]) 
+    
     st.plotly_chart(fig1, use_container_width=True)
 
 def render_lohas_plot(valid_data, current_price, current_ma20w):
