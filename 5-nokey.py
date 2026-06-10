@@ -142,6 +142,27 @@ button[kind="primary"]:hover,
     line-height: 1.3 !important;
     word-wrap: break-word !important;
 }
+/* 🎯 終極光學對齊修正：解決全形符號【】造成的視覺錯位 */
+[data-testid="stMarkdownContainer"] ul {
+    list-style-position: outside !important;
+    padding-left: 1.8rem !important; 
+}
+
+[data-testid="stMarkdownContainer"] li {
+    list-style-position: outside !important;
+    margin-bottom: 0.8rem !important;
+    line-height: 1.6 !important;
+}
+
+[data-testid="stMarkdownContainer"] li p {
+    display: block !important; 
+    margin: 0 !important;
+    /* 🌟 關鍵魔法：利用負縮排把第一行偷偷往左拉 0.5em，剛好抵銷【的隱形空白，讓兩行的「實體墨水」完美切齊！ */
+    text-indent: -0.5em !important; 
+    padding-left: 0.5em !important;
+}
+
+</style>
 """
 
 # ==================== 頁面配置與 CSS 注入 ====================
