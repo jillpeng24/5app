@@ -142,26 +142,40 @@ button[kind="primary"]:hover,
     line-height: 1.3 !important;
     word-wrap: break-word !important;
 }
-/* 🎯 終極光學對齊修正：解決全形符號【】造成的視覺錯位 */
 [data-testid="stMarkdownContainer"] ul {
-    list-style-position: outside !important;
-    padding-left: 1.8rem !important; 
+    list-style: none !important;
+    padding-left: 0 !important;
+    margin: 0.4rem 0 !important;
 }
 
 [data-testid="stMarkdownContainer"] li {
-    list-style-position: outside !important;
+    position: relative !important;
+    padding-left: 1.5em !important;
     margin-bottom: 0.8rem !important;
-    line-height: 1.6 !important;
+    line-height: 1.7 !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
 }
 
-[data-testid="stMarkdownContainer"] li p {
-    display: block !important; 
+[data-testid="stMarkdownContainer"] li::before {
+    content: "•" !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    color: #8B6F77 !important;
+}
+
+[data-testid="stMarkdownContainer"] li > p,
+[data-testid="stMarkdownContainer"] li > div {
     margin: 0 !important;
-    /* 🌟 關鍵魔法：利用負縮排把第一行偷偷往左拉 0.5em，剛好抵銷【的隱形空白，讓兩行的「實體墨水」完美切齊！ */
-    text-indent: -0.5em !important; 
-    padding-left: 0.5em !important;
+    padding: 0 !important;
 }
 
+@media (max-width: 768px) {
+    [data-testid="stMarkdownContainer"] li {
+        padding-left: 1.3em !important;
+    }
+}
 </style>
 """
 
@@ -500,32 +514,31 @@ def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fi
     # 2. 多空雷達掃描 (改用 🌧️ 與 ❄️)
     fiveline_clean = fiveline_zone.replace('及', '')
     if is_trend_up:
-        analysis_text.append(f"* **【長線趨勢】🌸 多方掌控：** 五線譜位於「{fiveline_clean}」，且 ADX 高達 **{adx:.1f}** (+DI: {p_di:.1f}, -DI: {m_di:.1f})，顯示多方大趨勢極強。")
+        analysis_text.append(f"* 【長線趨勢】🌸 多方掌控： 五線譜位於「{fiveline_clean}」，且 ADX 高達 {adx:.1f} (+DI: {p_di:.1f}, -DI: {m_di:.1f})，顯示多方大趨勢極強。")
     elif is_trend_down:
-        analysis_text.append(f"* **【長線趨勢】🌧️ 空方壓制：** 五線譜位於「{fiveline_clean}」，且 ADX 高達 **{adx:.1f}** (+DI: {p_di:.1f}, -DI: {m_di:.1f})，顯示空方大趨勢極強。")
+        analysis_text.append(f"* 【長線趨勢】🌧️ 空方壓制： 五線譜位於「{fiveline_clean}」，且 ADX 高達 {adx:.1f} (+DI: {p_di:.1f}, -DI: {m_di:.1f})，顯示空方大趨勢極強。")
     else:
-        analysis_text.append(f"* **【長線趨勢】🌾 區間震盪：** 五線譜位於「{fiveline_clean}」，ADX 為 **{adx:.1f}** (趨勢偏弱)，長線無明顯單向動能。")
+        analysis_text.append(f"* 【長線趨勢】🌾 區間震盪： 五線譜位於「{fiveline_clean}」，ADX 為 {adx:.1f} (趨勢偏弱)，長線無明顯單向動能。")
 
     if macd > 0 and macd_hist < 0 and previous['MACD_Hist'] >= 0:
-        analysis_text.append(f"* **【短線動能】❄️ 高檔死叉 (引擎冷卻)：** MACD 於零軸上死叉 (DIF: **{macd:.2f}**, DEA: **{macd_sig:.2f}**)，紅柱轉綠 (**{macd_hist:.2f}**)，短線推升引擎失去動能。")
+        analysis_text.append(f"* 【短線動能】❄️ 高檔死叉 (引擎冷卻)： MACD 於零軸上死叉 (DIF: {macd:.2f}, DEA: {macd_sig:.2f})，紅柱轉綠 ({macd_hist:.2f})，短線推升引擎失去動能。")
     elif macd < 0 and macd_hist > 0 and previous['MACD_Hist'] <= 0:
-        analysis_text.append(f"* **【短線動能】🌸 低檔金叉 (引擎發動)：** MACD 於零軸下金叉 (DIF: **{macd:.2f}**, DEA: **{macd_sig:.2f}**)，綠柱轉紅 (**{macd_hist:.2f}**)，短線有築底反彈跡象。")
+        analysis_text.append(f"* 【短線動能】🌸 低檔金叉 (引擎發動)： MACD 於零軸下金叉 (DIF: {macd:.2f}, DEA: {macd_sig:.2f})，綠柱轉紅 ({macd_hist:.2f})，短線有築底反彈跡象。")
     elif macd_hist > previous['MACD_Hist']:
-        analysis_text.append(f"* **【短線動能】🌸 動能延續：** MACD 柱狀體維持擴張態勢 (DIF: **{macd:.2f}**, 柱狀體: **{macd_hist:.2f}**)。")
+        analysis_text.append(f"* 【短線動能】🌸 動能延續： MACD 柱狀體維持擴張態勢 (DIF: {macd:.2f}, 柱狀體: {macd_hist:.2f})。")
     else:
-        analysis_text.append(f"* **【短線動能】🌧️ 動能衰退：** MACD 柱狀體出現縮減 (DIF: **{macd:.2f}**, 柱狀體: **{macd_hist:.2f}**)，短線上攻力道減弱。")
-        
-    if w_r > -20:
-        analysis_text.append(f"* **【情緒與波動】🌧️ 極度沸騰 (超買)：** 威廉指標 W%R 來到 **{w_r:.2f}**，**短天期 RSI 高達 {rsi:.1f}**，且布林帶寬 BBW 為 **{bbw:.2f}%**，隨時可能面臨漲多回檔。")
-    elif w_r < -80:
-        analysis_text.append(f"* **【情緒與波動】🌸 極度恐慌 (超賣)：** 威廉指標 W%R 來到 **{w_r:.2f}**，**目前 RSI 降至 {rsi:.1f}**，且布林帶寬 BBW 為 **{bbw:.2f}%**，市場情緒過度悲觀。")
-    else:
-        analysis_text.append(f"* **【情緒與波動】🌾 情緒穩定：** 威廉指標 W%R 為 **{w_r:.2f}**，**目前 RSI 為 {rsi:.1f}**，布林帶寬 BBW 為 **{bbw:.2f}%**，未見極端情緒。")
+        analysis_text.append(f"* 【短線動能】🌧️ 動能衰退： MACD 柱狀體出現縮減 (DIF: {macd:.2f}, 柱狀體: {macd_hist:.2f})，短線上攻力道減弱。")
 
+    if w_r > -20:
+        analysis_text.append(f"* 【情緒與波動】🌧️ 極度沸騰 (超買)： 威廉指標 W%R 來到 {w_r:.2f}，短天期 RSI 高達 {rsi:.1f}，且布林帶寬 BBW 為 {bbw:.2f}%，隨時可能面臨漲多回檔。")
+    elif w_r < -80:
+        analysis_text.append(f"* 【情緒與波動】🌸 極度恐慌 (超賣)： 威廉指標 W%R 來到 {w_r:.2f}，目前 RSI 降至 {rsi:.1f}，且布林帶寬 BBW 為 {bbw:.2f}%，市場情緒過度悲觀。")
+    else:
+        analysis_text.append(f"* 【情緒與波動】🌾 情緒穩定： 威廉指標 W%R 為 {w_r:.2f}，目前 RSI 為 {rsi:.1f}，布林帶寬 BBW 為 {bbw:.2f}%，未見極端情緒。")
     # 3. 行動劇本
     analysis_text.append("\n### 🛡️ 行動劇本與防守點位：")
-    analysis_text.append(f"* **若持有部位：** {script_hold}")
-    analysis_text.append(f"* **若空手觀望：** {script_empty}")
+    analysis_text.append(f"* 若持有部位： {script_hold}")
+    analysis_text.append(f"* 若空手觀望： {script_empty}")
     
     return "\n".join(analysis_text)
 
