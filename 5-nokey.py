@@ -714,9 +714,14 @@ def render_analysis_main(stock_input, start_date, end_date, analyze_button):
                 
                 window = 100
                 df_calc['MA20W'] = df_calc['Close'].rolling(window=window, min_periods=window).mean()
-                rolling_std = df_calc['Close'].rolling(window=window, min_periods=window).std()
-                df_calc['UB'] = df_calc['MA20W'] + 2 * rolling_std
-                df_calc['LB'] = df_calc['MA20W'] - 2 * rolling_std
+                # 樂活通道改良自 Price Headley 加速通道 (Acceleration Bands)
+                # 上下緣依當日振幅比例 (High-Low)/(High+Low) 動態調整，再取 window 期移動平均平滑
+                width = 10
+                hl_ratio = (df_calc['High'] - df_calc['Low']) / (df_calc['High'] + df_calc['Low'])
+                daily_upper = df_calc['High'] * (1 + width * hl_ratio)
+                daily_lower = df_calc['Low'] * (1 - width * hl_ratio)
+                df_calc['UB'] = daily_upper.rolling(window=window, min_periods=window).mean()
+                df_calc['LB'] = daily_lower.rolling(window=window, min_periods=window).mean()
                 df_calc['Zone'] = np.where(df_calc['Close'] > df_calc['MA20W'], '樂活區(多頭)', '毅力區(空頭)')
 
                 df_calc['RSI'] = calculate_rsi(df_calc['Close'], 14)
