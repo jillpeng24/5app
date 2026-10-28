@@ -578,6 +578,51 @@ def render_metric_cards(current, fiveline_zone, action_detail):
         col4.metric("綜合建議", action_detail)
 
 
+# 🔁 0.5 年循環提醒：固定用 0.5 年、一般算法計算（不受側邊欄期間／算法影響）
+#    規則（回測 00631L、QLD、TQQQ）：+2SD 減碼（台股 1/3、美股 1/2），跌到 −1SD 買回
+#    放在「行動劇本與防守點位」的第三點；與上方「綜合建議」依據不同，文字開頭標明以免混淆
+def cycle_alert_line(df_calc, end_date, symbol):
+    end_ts = pd.Timestamp(end_date)
+    if df_calc.index.tz is not None:
+        end_ts = end_ts.tz_localize(df_calc.index.tz)
+    data = df_calc[df_calc.index <= end_ts + pd.Timedelta(days=1)]['Close']
+
+    def z_at(day):
+        """以 day 為最後一天、往前 0.5 年做一般回歸，回傳當天位階（SD）"""
+        closes = data[(data.index >= day - pd.Timedelta(days=int(0.5 * 365))) & (data.index <= day)].values
+        if len(closes) < 60:
+            return None
+        x = np.arange(len(closes))
+        slope, intercept = np.polyfit(x, closes, 1)
+        trend = slope * x + intercept
+        sd = np.std(closes - trend)
+        return None if sd <= 1e-9 * abs(closes.mean()) else (closes[-1] - trend[-1]) / sd
+
+    if data.empty:
+        return None
+    z = z_at(data.index[-1])
+    if z is None:
+        return None
+
+    ratio = "1/3" if symbol.endswith(('.TW', '.TWO')) else "1/2"
+    if z >= 2:
+        action = f"可減碼 {ratio}"
+    elif z <= -1:
+        action = "可逐步買回"
+    else:
+        # 近 20 個交易日曾到 −1SD 或 +2SD，補充說明剛從哪裡回來
+        recent = [z_at(d) for d in data.index[-21:-1]]
+        recent = [v for v in recent if v is not None]
+        if any(v <= -1 for v in recent):
+            action = "未到買賣點（近期剛從 −1SD 回升）"
+        elif any(v >= 2 for v in recent):
+            action = "未到買賣點（近期剛從 +2SD 回落）"
+        else:
+            action = "未到買賣點"
+
+    return f"* 若照 0.5 年循環進出： 目前 {z:+.2f} SD，{action}。"
+
+
 # 🎯 輔助：【全新改版】三段式智能分析生成函數（加入 RSI 與天氣符號）
 def generate_internal_analysis(stock_name, stock_symbol, slope_dir, sd_level, fiveline_zone, current, valid_data):
     previous = valid_data.iloc[-2] if len(valid_data) > 1 else current
@@ -954,7 +999,7 @@ def render_analysis_main(stock_input, start_date, end_date, analyze_button):
             st.subheader(f"📈 {stock_name} ({stock_symbol_actual})")
             
             render_metric_cards(current, fiveline_zone, action_detail)
-            
+
             tab1, tab2, tab3, tab4 = st.tabs(["🎼 五線譜", "🌈 樂活通道", "📊 震盪指標", "波動與情緒"]) 
 
             with tab1: render_fiveline_plot(valid_data, slope_dir, slope);
@@ -966,6 +1011,9 @@ def render_analysis_main(stock_input, start_date, end_date, analyze_button):
             
             # 🎯 全新的分析報告模組（戰情總結 -> 數據雷達 -> 劇本）
             analysis_result = generate_internal_analysis(stock_name, stock_symbol_actual, slope_dir, sd_level, fiveline_zone, current, valid_data)
+            cycle_line = cycle_alert_line(df_calc, end_date, stock_symbol_actual)
+            if cycle_line:
+                analysis_result += "\n" + cycle_line
             st.markdown(analysis_result)
 
         except Exception as e:
