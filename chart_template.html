@@ -9,7 +9,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:transparent;color:var(--ink);font:400 15px/1.6 "Huninn","PingFang TC","Noto Sans TC",system-ui,sans-serif}
 button,input{font-family:inherit}
-.card{position:relative;background:var(--sheet);border-radius:18px;padding:6px 8px 10px;margin:2px 2px 14px;box-shadow:0 1px 0 rgba(74,64,56,.04),0 8px 24px -14px rgba(74,64,56,.25)}
+.card{position:relative;background:var(--sheet);border-radius:18px;padding:6px 8px 10px;margin:2px 2px 10px;box-shadow:0 1px 0 rgba(74,64,56,.04),0 8px 24px -14px rgba(74,64,56,.25)}
 .tabs{display:flex;gap:4px;padding:8px 8px 2px;flex-wrap:wrap}
 .tabs button{font-size:15px;color:var(--muted);background:none;border:0;padding:4px 12px;cursor:pointer;border-radius:999px}
 .tabs button[aria-selected=true]{color:var(--ink);background:var(--paper)}
@@ -91,7 +91,7 @@ const fmtP=v=>v>=1000?v.toFixed(0):v.toFixed(2);
 let G;
 function draw(){
   const view=cur,narrow=card.clientWidth<600,VW=narrow?600:900,FS=narrow?21:13;
-  const VH=view==='wr'?(narrow?400:300):(narrow?520:400);
+  const VH=narrow?520:400;   // 三個分頁同一個高度，切換時外框不會留空白
   const X0=narrow?6:10,X1=VW-(narrow?112:150),TX=X1+(narrow?16:24),AX=VW-6,Y0=14,Y1=VH-(narrow?40:30);
   const w=windowIdx();
   if(!w){svg.setAttribute('viewBox',`0 0 ${VW} 120`);svg.innerHTML=`<text x="${VW/2}" y="60" text-anchor="middle" font-size="${FS}" fill="#9A8F82">這段期間資料太少</text>`;G=null;return;}

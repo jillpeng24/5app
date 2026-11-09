@@ -94,11 +94,12 @@ html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"]{backg
 .verdict p b{font-weight:400}
 .cycles{display:flex;gap:6px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--rule);align-items:stretch;flex-wrap:wrap}
 .cycles .h{font-size:13px;color:var(--muted);align-self:center;margin-right:2px;line-height:1.4}
-.cycles a{flex:1;min-width:4.4em;background:var(--paper);border-radius:10px;padding:5px 8px;text-align:center;line-height:1.35;text-decoration:none!important}
+.cycles a{flex:1;min-width:0;background:var(--paper);border-radius:10px;padding:5px 8px;text-align:center;line-height:1.35;text-decoration:none!important}
 .cycles a small{display:block;font-size:12.5px;color:var(--muted)}
-.cycles a span{font-size:15px}
+.cycles a span{font-size:15px;white-space:nowrap}
+@media (max-width:640px){.cycles .h{flex-basis:100%;margin:0 0 2px}.cycles .h br{display:none}}  /* 手機：標題一行、三格同一排 */
 .hi{color:var(--sell)!important} .lo{color:var(--buy)!important} .mid{color:var(--muted)!important}
-ul.rules{list-style:none;margin:4px 0 0;padding:0}
+ul.rules{list-style:none;margin:-8px 0 0;padding:0}
 ul.rules li{display:grid;grid-template-columns:5em 1fr auto;gap:0 12px;padding:12px 4px;border-bottom:1px solid var(--rule);margin:0}
 ul.rules .k{font-size:17px} ul.rules .v{font-size:16px}
 ul.rules .s{grid-column:2/4;color:var(--muted);font-size:14.5px}
