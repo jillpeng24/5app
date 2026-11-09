@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=Huninn&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F6F1E8;--sheet:#FFFDF8;--ink:#4A4038;--muted:#9A8F82;--rule:#EAE1D3}
+*{box-sizing:border-box}
+html,body{margin:0;background:transparent;color:var(--ink);font:400 15px/1.6 "Huninn","PingFang TC","Noto Sans TC",system-ui,sans-serif}
+button,input{font-family:inherit}
+.card{position:relative;background:var(--sheet);border-radius:18px;padding:6px 8px 10px;margin:2px 2px 14px;box-shadow:0 1px 0 rgba(74,64,56,.04),0 8px 24px -14px rgba(74,64,56,.25)}
+.tabs{display:flex;gap:4px;padding:8px 8px 2px;flex-wrap:wrap}
+.tabs button{font-size:15px;color:var(--muted);background:none;border:0;padding:4px 12px;cursor:pointer;border-radius:999px}
+.tabs button[aria-selected=true]{color:var(--ink);background:var(--paper)}
+.opts{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:6px 10px 0;font-size:14px;color:var(--muted)}
+.seg{display:inline-flex;background:var(--paper);border-radius:999px;padding:2px}
+.seg button{border:0;background:none;color:var(--muted);font-size:14px;padding:2px 11px;border-radius:999px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 3px rgba(74,64,56,.15)}
+.custom{display:none;gap:6px;align-items:center;font-size:14px}
+.custom.on{display:inline-flex}
+.custom input{border:1px solid var(--rule);border-radius:8px;padding:1px 6px;font-size:14px;color:var(--ink);background:var(--sheet)}
+button:focus-visible,input:focus-visible{outline:3px solid #6C99D6;outline-offset:2px}
+svg{display:block;width:100%;height:auto;touch-action:pan-y}
+.tip{position:absolute;z-index:2;pointer-events:none;background:rgba(255,255,255,.96);border:1px solid #E3DCD1;border-radius:10px;padding:8px 12px;font-size:13.5px;line-height:1.6;box-shadow:0 6px 18px -8px rgba(0,0,0,.25);white-space:nowrap}
+.tip i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.empty{padding:40px 10px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-v="staff">五線譜</button>
+    <button role="tab" aria-selected="false" data-v="lohas">樂活通道</button>
+    <button role="tab" aria-selected="false" data-v="wr">威廉指標</button>
+  </div>
+  <div class="opts">
+    <span class="seg" id="per" aria-label="期間">
+      <button aria-pressed="true" data-y="0.5">0.5 年</button><button aria-pressed="false" data-y="1">1 年</button><button aria-pressed="false" data-y="3.5">3.5 年</button><button aria-pressed="false" data-y="10">10 年</button><button aria-pressed="false" data-y="c">自訂</button>
+    </span>
+    <span class="seg" id="alg" aria-label="算法"><button aria-pressed="true" data-l="0">一般</button><button aria-pressed="false" data-l="1">對數</button></span>
+    <span class="custom" id="custom"><input type="date" id="d0" aria-label="開始日期">～<input type="date" id="d1" aria-label="結束日期"></span>
+  </div>
+  <svg id="chart" role="img" aria-label="五線譜走勢圖"></svg>
+  <div class="tip" id="tip" hidden></div>
+</div>
+<script>
+const DATA=__DATA__;
+const svg=document.getElementById('chart'),tip=document.getElementById('tip'),card=document.querySelector('.card');
+const f=n=>(+n).toFixed(1);
+const tw=(s,fs)=>[...s].reduce((w,ch)=>w+(/[　-鿿＀-￯]/.test(ch)?fs:fs*.6),0);
+const PRICE='#1F1D1B';
+const STAFF=[
+  {k:2.5,name:'+2.5 賣點',col:'#9C2A6A',dash:'6 5'},
+  {k:2,name:'+2',col:'#CC4F90'},
+  {k:1,name:'+1',col:'#E8A6C6'},
+  {k:0,name:'趨勢線',col:'#73747C'},
+  {k:-1,name:'−1',col:'#6C99D6'},
+  {k:-2,name:'−2',col:'#2A3BE0'},
+];
+const LOH=[{key:'ub',name:'上緣',col:'#CC4F90'},{key:'ma',name:'中線（20 週）',col:'#73747C'},{key:'lb',name:'下緣',col:'#2A3BE0'}];
+let PER=String(DATA.period||'0.5'),LOG=!!DATA.log,cur='staff';
+
+// 依期間取出資料區段（跟原本 App 一樣：從今天往回推 N×365 天）
+function windowIdx(){
+  const D=DATA.dates,n=D.length;
+  if(PER==='c'){
+    const a=document.getElementById('d0').value,b=document.getElementById('d1').value;
+    let i0=D.findIndex(d=>d>=a),i1=n-1;while(i1>0&&D[i1]>b)i1--;
+    if(i0<0)i0=0;if(i1-i0<10)return null;return [i0,i1];
+  }
+  const end=new Date(DATA.today),st=new Date(end-(+PER)*365*864e5).toISOString().slice(0,10);
+  let i0=D.findIndex(d=>d>=st);if(i0<0)i0=0;return [i0,n-1];
+}
+// 五線譜：以交易日序號做線性回歸，SD 為殘差標準差；對數模式先取 log
+function fiveline(vals,log){
+  const n=vals.length,yv=vals.map(v=>log?Math.log(v):v);
+  const mx=(n-1)/2,my=yv.reduce((a,b)=>a+b)/n;let sxy=0,sxx=0;yv.forEach((v,i)=>{sxy+=(i-mx)*(v-my);sxx+=(i-mx)**2;});
+  const b=sxy/sxx,a=my-b*mx,sd=Math.sqrt(yv.reduce((s,v,i)=>s+(v-a-b*i)**2,0)/n);
+  return (k,i)=>{const v=a+b*i+k*sd;return log?Math.exp(v):v;};
+}
+function niceTicks(lo,hi,n){const raw=(hi-lo)/n,p=10**Math.floor(Math.log10(raw)),st=[1,2,2.5,5,10].map(m=>m*p).find(s=>s>=raw);
+  const out=[];for(let v=Math.ceil(lo/st)*st;v<=hi+1e-9;v+=st)out.push(+v.toFixed(6));return out;}
+function timeTicks(dates){
+  const long=dates.length>300,out=[];let last='';
+  dates.forEach((d,i)=>{const key=long?d.slice(0,4):d.slice(5,7);if(key!==last){if(i||!long)out.push([i,long?key:(+key)+'月']);last=key;}});
+  return out;
+}
+const fmtP=v=>v>=1000?v.toFixed(0):v.toFixed(2);
+
+let G;
+function draw(){
+  const view=cur,narrow=card.clientWidth<600,VW=narrow?600:900,FS=narrow?21:13;
+  const VH=view==='wr'?(narrow?400:300):(narrow?520:400);
+  const X0=narrow?6:10,X1=VW-(narrow?112:150),TX=X1+(narrow?16:24),AX=VW-6,Y0=14,Y1=VH-(narrow?40:30);
+  const w=windowIdx();
+  if(!w){svg.setAttribute('viewBox',`0 0 ${VW} 120`);svg.innerHTML=`<text x="${VW/2}" y="60" text-anchor="middle" font-size="${FS}" fill="#9A8F82">這段期間資料太少</text>`;G=null;return;}
+  const [i0,i1]=w,n=i1-i0+1,sl=a=>a.slice(i0,i1+1);
+  const dates=sl(DATA.dates),close=sl(DATA.close);
+  let lines=[],lo,hi,price=view!=='wr',fmt=fmtP,straight=false;
+  if(view==='staff'){
+    const at=fiveline(close,LOG);straight=!LOG;
+    lines=STAFF.map(s=>({...s,v:i=>at(s.k,i)}));
+    const all=[...close,at(-2,0),at(-2,n-1),at(2.5,0),at(2.5,n-1)];
+    lo=Math.min(...all);hi=Math.max(...all);
+  }else if(view==='lohas'){
+    const arr={};LOH.forEach(s=>arr[s.key]=sl(DATA[s.key]));
+    lines=LOH.map(s=>({...s,v:i=>arr[s.key][i]}));
+    const all=[...close,...arr.ub,...arr.lb].filter(v=>v!=null);
+    lo=Math.min(...all);hi=Math.max(...all);
+  }else{
+    const wr=sl(DATA.wr);
+    lines=[{name:'威廉 %R',col:'#B98BC0',v:i=>wr[i],main:true},{name:'超買 −20',col:'#FF8C66',dash:'5 5',v:()=>-20},{name:'超賣 −80',col:'#8FB89C',dash:'5 5',v:()=>-80}];
+    lo=-104;hi=4;fmt=v=>v.toFixed(0);
+  }
+  if(view!=='wr'){const pad=(hi-lo)*.03;lo-=pad;hi+=pad;}
+  const x=i=>X0+(X1-X0)*i/(n-1),y=v=>Y1-(Y1-Y0)*(v-lo)/(hi-lo);
+  let s='';
+  const ticks=view==='wr'?[0,-20,-50,-80,-100]:niceTicks(lo,hi,narrow?4:6);
+  for(const t of ticks){s+=`<line x1="${X0}" x2="${X1}" y1="${f(y(t))}" y2="${f(y(t))}" stroke="#ECE7DF"/>`;
+    if(!narrow)s+=`<text x="${AX}" y="${f(y(t)+FS*.35)}" font-size="${FS-1}" fill="#A79D90" text-anchor="end">${t}</text>`;}
+  let lastX=-99;
+  for(const [i,m] of timeTicks(dates)){const xi=x(i);if(xi-lastX<FS*3)continue;lastX=xi;
+    s+=`<line x1="${f(xi)}" x2="${f(xi)}" y1="${Y0}" y2="${Y1}" stroke="#F1ECE4"/><text x="${f(xi)}" y="${VH-8}" font-size="${FS-1}" fill="#A79D90" text-anchor="${xi<X0+FS*1.6?'start':'middle'}">${m}</text>`;}
+  s+=`<line x1="${X1}" x2="${X1}" y1="${Y0}" y2="${Y1}" stroke="#E3DCD1"/>`;
+  const step=Math.max(1,Math.floor(n/700));
+  const idx=[...Array(n).keys()].filter(i=>i%step===0||i===n-1);
+  const path=(ii,fn)=>{let d='',pen=false;for(const i of ii){const v=fn(i);if(v==null||!isFinite(v)){pen=false;continue;}d+=`${pen?'L':'M'}${f(x(i))},${f(y(v))}`;pen=true;}return d;};
+  for(const L of lines){
+    s+=`<path d="${path(straight?[0,n-1]:idx,L.v)}" fill="none" stroke="${L.col}" stroke-width="${(L.main?1.8:1.6)*(narrow?1.7:1)}" ${L.dash?`stroke-dasharray="${L.dash}"`:''} stroke-linejoin="round"/>`;
+  }
+  if(price)s+=`<path d="${path(idx,i=>close[i])}" fill="none" stroke="${PRICE}" stroke-width="${narrow?2.6:1.5}" stroke-linejoin="round"/>`;
+  // 右側數字標籤
+  const tags=lines.map(L=>({v:L.v(n-1),col:L.col})).filter(t=>t.v!=null);
+  if(price)tags.push({v:close[n-1],col:PRICE});
+  const h=FS*1.45;tags.forEach(t=>{t.y0=y(t.v);t.y=t.y0;});
+  const ord=[...tags].sort((a,b)=>a.y-b.y);
+  for(let j=1;j<ord.length;j++)if(ord[j].y<ord[j-1].y+h+1)ord[j].y=ord[j-1].y+h+1;
+  const over=ord.length?ord[ord.length-1].y+h/2-(VH-4):0;if(over>0)ord.forEach(t=>t.y-=over);
+  for(const t of tags){
+    const txt=fmt(t.v),w=tw(txt,FS)+FS*.8;
+    s+=`<path d="M${X1},${f(t.y0)}L${TX-8},${f(t.y0)}L${TX},${f(t.y)}" fill="none" stroke="${t.col}" stroke-width="${narrow?1.6:1}" stroke-dasharray="3 3"/>`;
+    s+=`<circle cx="${X1}" cy="${f(t.y0)}" r="${narrow?6:4}" fill="#fff" stroke="${t.col}" stroke-width="${narrow?2.4:1.5}"/>`;
+    s+=`<rect x="${TX}" y="${f(t.y-h/2)}" width="${f(w)}" height="${f(h)}" rx="${narrow?4:3}" fill="${t.col}"/>`;
+    s+=`<text x="${f(TX+w/2)}" y="${f(t.y+FS*.36)}" font-size="${FS}" fill="#fff" text-anchor="middle">${txt}</text>`;
+  }
+  s+=`<g id="hov"></g>`;
+  svg.setAttribute('viewBox',`0 0 ${VW} ${VH}`);
+  svg.setAttribute('aria-label',{staff:'五線譜走勢圖',lohas:'樂活通道走勢圖',wr:'威廉指標走勢圖'}[view]);
+  svg.innerHTML=s;
+  G={lines,price,x,y,X0,X1,Y0,Y1,VW,fmt,narrow,dates,close,n};
+  tip.hidden=true;
+}
+function hover(e){
+  if(!G)return;
+  const r=svg.getBoundingClientRect(),sx=(e.clientX-r.left)*G.VW/r.width;
+  const hov=svg.querySelector('#hov');
+  if(sx<G.X0||sx>G.X1){tip.hidden=true;hov.innerHTML='';return;}
+  const i=Math.round((sx-G.X0)/(G.X1-G.X0)*(G.n-1)),px=G.x(i);
+  const rows=G.lines.map(L=>({name:L.name,col:L.col,v:L.v(i)})).filter(r=>r.v!=null);
+  if(G.price)rows.push({name:'價格',col:PRICE,v:G.close[i]});
+  rows.sort((a,b)=>b.v-a.v);
+  hov.innerHTML=`<line x1="${f(px)}" x2="${f(px)}" y1="${G.Y0}" y2="${G.Y1}" stroke="#9A8F82" stroke-dasharray="3 3"/>`+
+    rows.map(r=>`<circle cx="${f(px)}" cy="${f(G.y(r.v))}" r="${G.narrow?5:3.5}" fill="${r.col}" stroke="#fff" stroke-width="1.5"/>`).join('');
+  tip.innerHTML=`<b style="font-weight:400">${G.dates[i].replace(/-/g,'/')}</b>`+rows.map(r=>`<div><i style="background:${r.col}"></i>${r.name}：${G.fmt(r.v)}</div>`).join('');
+  tip.hidden=false;
+  const cr=card.getBoundingClientRect(),left=r.left-cr.left+px*r.width/G.VW,w=tip.offsetWidth;
+  tip.style.left=(left+12+w>cr.width-8?left-12-w:left+12)+'px';
+  tip.style.top=(r.top-cr.top+12)+'px';
+}
+svg.addEventListener('pointermove',hover);
+svg.addEventListener('pointerleave',()=>{tip.hidden=true;const g=svg.querySelector('#hov');if(g)g.innerHTML='';});
+
+function press(sel,btn){document.querySelectorAll(sel+' button').forEach(b=>b.setAttribute('aria-pressed',b===btn));}
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  cur=b.dataset.v;document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.getElementById('alg').style.display=cur==='staff'?'':'none';draw();}));
+document.querySelectorAll('#per button').forEach(b=>b.addEventListener('click',()=>{
+  PER=b.dataset.y;press('#per',b);document.getElementById('custom').classList.toggle('on',PER==='c');draw();}));
+document.querySelectorAll('#alg button').forEach(b=>b.addEventListener('click',()=>{LOG=b.dataset.l==='1';press('#alg',b);draw();}));
+['d0','d1'].forEach(id=>document.getElementById(id).addEventListener('change',draw));
+// 自訂期間預設：最近一年
+document.getElementById('d1').value=DATA.d1||DATA.dates[DATA.dates.length-1];
+document.getElementById('d0').value=DATA.d0||DATA.dates[Math.max(0,DATA.dates.length-250)];
+// 期間與算法由上方的 Streamlit 選項控制，圖裡不再重複
+document.querySelector('.opts').style.display='none';
+document.getElementById('d0').min=document.getElementById('d1').min=DATA.dates[0];
+const pb=document.querySelector(`#per button[data-y="${PER}"]`);if(pb)press('#per',pb);
+draw();
+new ResizeObserver(()=>draw()).observe(card);
+</script>
+</body>
+</html>
