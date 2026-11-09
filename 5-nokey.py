@@ -77,6 +77,8 @@ html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"]{backg
 .st-key-per button p,.st-key-alg button p{font-size:14px!important}
 .st-key-per button[kind$="Active"],.st-key-alg button[kind$="Active"],
 .st-key-per button[aria-checked="true"],.st-key-alg button[aria-checked="true"]{background:var(--paper)!important;color:var(--ink)!important;border-color:var(--staff,#D6CAB6)!important}
+.cus-lab{color:var(--muted);font-size:15px}
+[data-testid="stSelectbox"] div[data-baseweb="select"]>div{border-radius:999px!important;background:var(--sheet)!important}
 [data-testid="stDateInput"] input{border-radius:999px!important;background:var(--sheet)!important}
 [data-testid="stTextInput"] input{border-radius:999px!important;background:var(--sheet)!important}
 .head{display:grid;grid-template-columns:1fr auto;align-items:end;gap:2px 16px;margin:6px 0 0}
@@ -391,11 +393,20 @@ if not st.session_state.get("alg"):
     st.session_state.alg = "一般"
 yrs = PERIODS[st.session_state.per]
 is_log = st.session_state.alg == "對數"
-rng = st.session_state.get("rng")
-if yrs is None and (not rng or len(rng) != 2):
-    rng = (d.date() - timedelta(days=365), d.date())
+# 自訂期間：用「年、月」下拉選單（手機上比月曆好按）
+YEARS = list(range(df.index[0].year + 1, d.year + 1))
+MONTHS = list(range(1, 13))
+if "y0" not in st.session_state:
+    a = d - pd.DateOffset(years=1)
+    st.session_state.y0, st.session_state.m0 = max(a.year, YEARS[0]), a.month
+    st.session_state.y1, st.session_state.m1 = d.year, d.month
+_s = pd.Timestamp(st.session_state.y0, st.session_state.m0, 1)
+_e = min(pd.Timestamp(st.session_state.y1, st.session_state.m1, 1) + pd.offsets.MonthEnd(0), d)
+if _e <= _s:
+    _e = d
+rng = (_s.date(), _e.date())
 z_now = zscore(close, yrs, today, log=is_log) if yrs else zscore(close, start=rng[0], end=rng[1], log=is_log)
-per_label = f"{yrs:g} 年" if yrs else f"{rng[0]:%Y/%m/%d}～{rng[1]:%Y/%m/%d}"
+per_label = f"{yrs:g} 年" if yrs else f"{rng[0]:%Y/%m/%d}～{rng[1]:%Y/%m/%d} "
 
 rule = RULES.get(code)
 w_now = float(wr.iloc[-1])
@@ -434,8 +445,15 @@ with opts:
     st.segmented_control("期間", list(PERIODS), key="per", label_visibility="collapsed")
     st.segmented_control("算法", ["一般", "對數"], key="alg", label_visibility="collapsed")
 if yrs is None:
-    st.date_input("自訂期間", value=rng, key="rng", min_value=df.index[0].date(), max_value=d.date(),
-                  format="YYYY/MM/DD", label_visibility="collapsed")
+    for lab, ky, km in (("從", "y0", "m0"), ("到", "y1", "m1")):   # 「從」一排、「到」一排
+        try:
+            row = st.container(horizontal=True, gap="small", vertical_alignment="center")
+        except TypeError:
+            row = st.container()
+        with row:
+            st.markdown(f'<span class="cus-lab">{lab}</span>', unsafe_allow_html=True)
+            st.selectbox(f"{lab}年", YEARS, key=ky, format_func=lambda y: f"{y} 年", label_visibility="collapsed", width=120)
+            st.selectbox(f"{lab}月", MONTHS, key=km, format_func=lambda m: f"{m} 月", label_visibility="collapsed", width=96)
 
 # --- 圖 ---
 keep = df.index >= df.index[-1] - pd.Timedelta(days=3653)
