@@ -229,6 +229,27 @@ def apply_bar(df, bar):
     return df
 
 
+@st.cache_data(ttl=20, show_spinner=False)
+def fetch_mis_quote(code):
+    """證交所即時行情（沒有永豐金鑰時用；延遲約幾秒到一分鐘）"""
+    js = requests.get(f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_{code}.tw|otc_{code}.tw&json=1&delay=0",
+                      timeout=6, headers={"User-Agent": "Mozilla/5.0"}).json()
+    for r in js.get("msgArray") or []:
+        num = lambda k: float(r[k]) if r.get(k) not in (None, "", "-") else None
+        px = num("z")
+        if px is None:                                   # 這幾秒沒成交：用最佳買價
+            b = (r.get("b") or "").split("_")[0]
+            px = float(b) if b not in ("", "-") else None
+        if not px:
+            continue
+        ts = pd.Timestamp(datetime.strptime(f'{r["d"]} {r.get("t", "13:30:00")}', "%Y%m%d %H:%M:%S"))
+        y = num("y")
+        return {"ts": ts, "date": ts.normalize(), "close": px, "open": num("o") or px,
+                "high": num("h") or px, "low": num("l") or px, "name": r.get("n", ""),
+                "chg": (px / y - 1) * 100 if y else None}
+    return None
+
+
 def load(code):
     """回傳 (日K, 名稱, 是否即時, 報價時間文字)"""
     tw = is_tw(code)
@@ -249,7 +270,16 @@ def load(code):
                 name = name or bar["name"]
         except Exception as e:
             print(f"永豐快照失敗：{e}")
-    elif not tw:
+    elif tw:                                             # 朋友版：證交所即時行情
+        try:
+            bar = fetch_mis_quote(clean)
+            if bar and bar["close"] > 0:
+                df = apply_bar(df, bar)
+                when, live_chg = bar["ts"], bar.get("chg")
+                name = name or bar["name"]
+        except Exception as e:
+            print(f"證交所即時行情失敗：{e}")
+    else:
         try:
             bar = fetch_us_latest(sym)
             if bar and bar["close"] > 0:
@@ -503,11 +533,11 @@ close = df["Close"]
 wr = williams_r(df)
 lh = lohas(df)
 last, prev = float(close.iloc[-1]), float(close.iloc[-2])
-chg = live_chg / 100 if live and live_chg is not None else last / prev - 1
+chg = live_chg / 100 if live_chg is not None else last / prev - 1
 d = df.index[-1]
 
 # --- 標頭 ---
-if live and when is not None and when.date() == today and when.hour * 60 + when.minute < 13 * 60 + 30:
+if when is not None and when.date() == today and when.hour * 60 + when.minute < 13 * 60 + 30:
     when_txt = f"盤中 {when:%H:%M}"
 else:
     when_txt = "收盤"
@@ -585,7 +615,7 @@ else:
             elif Hc["b_date"] is not None and (last_day - Hc["b_date"]).days <= 31:
                 v_sub = f'{md(Hc["b_date"])} 已建議買回，繼續抱著。'
             else:
-                v_sub = "最近沒有賣出，不用買回，繼續抱著。"
+                v_sub = "循環最近沒有賣出，不用買回，繼續抱著。"
             cyc_sub = v_sub
         else:
             v_title, cyc_pill = "持有", ("持有", "idle")
@@ -596,6 +626,14 @@ else:
             cyc_sub = v_sub if sold else ""
     else:
         v_title, v_sub = "位階", ""
+
+# 最上面的建議要把防大跌一起考慮：防守剛解除（5 個交易日內）就提醒買回防守賣出的部分
+recent_end = bool(H and not H["defend"] and H["d_end"] is not None and len(close.loc[H["d_end"]:]) <= 5 and not stale)
+if recent_end and z_now is not None and v_title != "賣點":
+    why = f'{rule["idx_name"]}站回 200 日線' if H["d_reason"] == "ma" else "VIX 破 40"
+    v_sub = f'{md(H["d_end"])} {why}，先前防守賣出的部分，<b class="lo">可以買回</b>。'
+    if Hc and Hc["b_date"] is not None and Hc["b_date"] >= H["d_end"]:     # 循環也在這段期間買回
+        v_sub = f'{md(H["d_end"])} {why}，先前賣出的部分（防守和循環），<b class="lo">都可以買回</b>。'
 
 others = {y: zscore(close, y, today, log=is_log) for y in (0.5, 1, 3.5, 10) if y != yrs}
 cyc_html = "".join(
@@ -677,7 +715,6 @@ if rule and rule.get("idx") and ix:
         dd = last / hi - 1
         gap = ix["close"] / ix["ma"] - 1
         v = f"離高點 {'−' if dd < 0 else '+'}{abs(dd):.1%}，{nm}在 200 日線{'上' if gap >= 0 else '下'} {'+' if gap >= 0 else '−'}{abs(gap):.1%}"
-        recent_end = H and H["d_end"] is not None and len(close.loc[H["d_end"]:]) <= 5
         if H and H["defend"] and H["d_start"] == last_day:
             rows.append(rule_row("🛡 防大跌", v, rule["defend"], "sell",
                                  f"{nm}跌破 200 日線，而且離高點跌超過 {rule['dd']:.0%}：可以{rule['defend']}"))
