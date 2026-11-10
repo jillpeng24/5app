@@ -439,8 +439,7 @@ def replay(close, wr, idx_s, vix_s, rule, yrs, tw):
         vx = v.reindex(v.index.union(dates)).ffill().reindex(dates).to_numpy()
     else:
         vx = np.full(n, np.nan)
-    ns = dates.asi8
-    span = int(yrs * 365 * 86400e9)
+    span = pd.Timedelta(days=int(yrs * 365))      # 用 Timedelta 比日期，不受時間單位（ns / us）影響
     for t in range(max(1, n - 520), n):
         # 防大跌
         if ix is not None and np.isfinite(ixma[t]):
@@ -451,7 +450,7 @@ def replay(close, wr, idx_s, vix_s, rule, yrs, tw):
                 out.update(defend=False, d_end=dates[t], d_reason="vix" if below else "ma")
         # 循環
         if rule.get("sell_z") is not None:
-            i0 = int(np.searchsorted(ns, ns[t] - span))
+            i0 = int(dates.searchsorted(dates[t] - span))
             if t - i0 < 20:
                 continue
             y = c[i0:t + 1]
