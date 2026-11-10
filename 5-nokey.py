@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+import requests
 import yfinance as yf
 
 try:
@@ -77,7 +78,11 @@ html,body,.stApp,[data-testid="stAppViewContainer"],[data-testid="stMain"]{backg
 .st-key-per button p,.st-key-alg button p{font-size:14px!important}
 .st-key-per button[kind$="Active"],.st-key-alg button[kind$="Active"],
 .st-key-per button[aria-checked="true"],.st-key-alg button[aria-checked="true"]{background:var(--paper)!important;color:var(--ink)!important;border-color:var(--staff,#D6CAB6)!important}
-.cus-lab{color:var(--muted);font-size:15px}
+.cus-lab{color:var(--muted);font-size:14px;white-space:nowrap}
+/* 月曆上方的月份、年份選單：加寬，避免「7 月」被擠成兩行 */
+[data-testid="stDateInputHeaderPickerPopover"],[data-testid="stDateInputHeaderPickerPopover"] [role="listbox"]{min-width:0!important;width:max-content!important}
+[data-testid="stDateInputHeaderPickerPopover"] [role="option"]{white-space:nowrap!important;width:auto!important;padding-left:10px!important;padding-right:10px!important}
+.st-key-d0 input,.st-key-d1 input{font-size:15px!important;padding-left:8px!important;padding-right:4px!important}
 [data-testid="stSelectbox"] div[data-baseweb="select"]>div{border-radius:999px!important;background:var(--sheet)!important}
 [data-testid="stDateInput"] input{border-radius:999px!important;background:var(--sheet)!important}
 [data-testid="stTextInput"] input{border-radius:999px!important;background:var(--sheet)!important}
@@ -287,22 +292,154 @@ def zscore(close, years=None, today=None, start=None, end=None, log=False):
     return float((y[-1] - (b * x[-1] + a)) / sd)
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def index_status(idx):
-    """大盤指數：收盤、200 日線、最近 5 天內有沒有剛站回"""
-    df, _ = fetch_history(idx, years=2)
-    if df.empty or len(df) < 210:
+@st.cache_data(ttl=86400, show_spinner=False)
+def _twse_month(yyyymm, day_key):
+    """證交所：某個月的加權指數每日收盤（day_key 讓「這個月」每天重抓，過去的月份只抓一次）"""
+    js = requests.get(f"https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={yyyymm}01&response=json",
+                      timeout=6, headers={"User-Agent": "Mozilla/5.0"}).json()
+    out = {}
+    for r in js.get("data") or []:
+        y, m, dd = r[0].split("/")
+        out[pd.Timestamp(int(y) + 1911, int(m), int(dd))] = float(r[4].replace(",", ""))
+    return out
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def twse_taiex(today):
+    """加權指數最近約 11 個月的收盤（證交所官方資料，算 200 日線用）"""
+    out = {}
+    for k in range(12):                       # 從這個月往回抓；抓不到就停，改用 Yahoo
+        mth = (pd.Timestamp(today) - pd.DateOffset(months=k)).strftime("%Y%m")
+        try:
+            out.update(_twse_month(mth, f"{today}-{datetime.now(TW_TZ):%H}" if k == 0 else ""))
+        except Exception:
+            break
+    return pd.Series(out, dtype=float).sort_index()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def taiex_live():
+    """盤中加權指數：有永豐用永豐，沒有用證交所即時行情（約 5 秒更新）"""
+    try:
+        if api is not None:
+            snap = api.snapshots([api.Contracts.Indexs.TSE.TSE001])[0]
+            if snap.close > 0:
+                return pd.to_datetime(snap.ts).normalize(), float(snap.close)
+    except Exception:
+        pass
+    try:
+        js = requests.get("https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_t00.tw&json=1&delay=0",
+                          timeout=8, headers={"User-Agent": "Mozilla/5.0"}).json()
+        r = js["msgArray"][0]
+        z = r.get("z")
+        if z and z != "-":
+            return pd.Timestamp(datetime.strptime(r["d"], "%Y%m%d")), float(z)
+    except Exception:
+        pass
+    return None
+
+
+def index_closes(idx, today):
+    """大盤每日收盤：長歷史用 Yahoo；加權最近一年用證交所官方資料蓋過去（Yahoo 常晚一天），再補盤中即時"""
+    df, _ = fetch_history(idx, years=3)
+    s = df["Close"].copy() if not df.empty else pd.Series(dtype=float)
+    if idx == "^TWII":
+        try:
+            tw = twse_taiex(today)
+            if len(tw):
+                s = pd.concat([s[s.index < tw.index[0]], tw])
+        except Exception:
+            pass
+        live = taiex_live()
+        if live and (s.empty or live[0] >= s.index[-1]):
+            s = s.copy()
+            s[live[0]] = live[1]
+    s = s[~s.index.duplicated(keep="last")].sort_index()
+    return s if len(s) else None
+
+
+def index_status(idx, today):
+    """大盤指數：收盤、200 日線、最近 5 天內有沒有剛站回、資料日期"""
+    s = index_closes(idx, today)
+    if s is None or len(s) < 210:
         return None
-    ma = df["Close"].rolling(200).mean()
-    above = df["Close"] > ma
-    return {"close": float(df["Close"].iloc[-1]), "ma": float(ma.iloc[-1]),
+    ma = s.rolling(200).mean()
+    above = s > ma
+    return {"close": float(s.iloc[-1]), "ma": float(ma.iloc[-1]), "date": s.index[-1].normalize(),
             "above": bool(above.iloc[-1]), "reclaimed": bool(above.iloc[-1] and not above.iloc[-6:-1].all())}
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def vix_now():
-    df, _ = fetch_history("^VIX", years=1)
+    df, _ = fetch_history("^VIX", years=3)
     return None if df.empty else float(df["Close"].iloc[-1])
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def vix_series():
+    df, _ = fetch_history("^VIX", years=3)
+    return None if df.empty else df["Close"]
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def replay(close, wr, idx_s, vix_s, rule, yrs, tw):
+    """
+    把規則從大約兩年前開始，一天一天重新跑一遍，記住之前建議過什麼：
+    - 防大跌：哪天開始防守（建議賣出）、哪天解除（站回 200 日線或 VIX ≥ 40）
+    - 循環：哪天在 +2.5 建議賣出、哪天建議買回；防守中先不買回
+    """
+    dates, n = close.index, len(close)
+    out = {"defend": False, "d_start": None, "d_end": None, "d_reason": None,
+           "sold": False, "s_date": None, "b_date": None, "blocked": False}
+    if n < 60:
+        return out
+    c, w = close.to_numpy(), wr.to_numpy()
+    hi = close.rolling(252, min_periods=1).max().to_numpy()
+    # 大盤與 200 日線、VIX 對齊到每個交易日（台股看前一個美股交易日的 VIX）
+    if idx_s is not None and rule.get("dd"):
+        ma = idx_s.rolling(200).mean()
+        al = lambda x: x.reindex(x.index.union(dates)).ffill().reindex(dates).to_numpy()
+        ix, ixma = al(idx_s), al(ma)
+    else:
+        ix = ixma = None
+    if vix_s is not None:
+        v = vix_s.copy()
+        if tw:
+            v.index = v.index + pd.Timedelta(days=1)
+        vx = v.reindex(v.index.union(dates)).ffill().reindex(dates).to_numpy()
+    else:
+        vx = np.full(n, np.nan)
+    ns = dates.asi8
+    span = int(yrs * 365 * 86400e9)
+    for t in range(max(1, n - 520), n):
+        # 防大跌
+        if ix is not None and np.isfinite(ixma[t]):
+            below = ix[t] < ixma[t]
+            if not out["defend"] and c[t] / hi[t] - 1 <= -rule["dd"] and below:
+                out.update(defend=True, d_start=dates[t])
+            elif out["defend"] and (not below or vx[t] >= 40):
+                out.update(defend=False, d_end=dates[t], d_reason="vix" if below else "ma")
+        # 循環
+        if rule.get("sell_z") is not None:
+            i0 = int(np.searchsorted(ns, ns[t] - span))
+            if t - i0 < 20:
+                continue
+            y = c[i0:t + 1]
+            x = np.arange(len(y))
+            b, a = np.polyfit(x, y, 1)
+            sd = np.std(y - (b * x + a))
+            z = (y[-1] - (b * x[-1] + a)) / sd
+            buy_ok = (rule["buy_z"] is not None and z <= rule["buy_z"]) or w[t] <= rule["wr"]
+            if not out["sold"] and z >= rule["sell_z"]:
+                out.update(sold=True, s_date=dates[t], blocked=False)
+            elif out["sold"] and buy_ok:
+                if out["defend"]:
+                    out["blocked"] = True          # 防守中：先不買回
+                else:
+                    out.update(sold=False, b_date=dates[t], blocked=False)
+            elif out["sold"]:
+                out["blocked"] = False
+    return out
 
 
 # ==================== 文字 ====================
@@ -393,35 +530,70 @@ if not st.session_state.get("alg"):
     st.session_state.alg = "一般"
 yrs = PERIODS[st.session_state.per]
 is_log = st.session_state.alg == "對數"
-# 自訂期間：用「年、月」下拉選單（手機上比月曆好按）
-YEARS = list(range(df.index[0].year + 1, d.year + 1))
-MONTHS = list(range(1, 13))
-if "y0" not in st.session_state:
-    a = d - pd.DateOffset(years=1)
-    st.session_state.y0, st.session_state.m0 = max(a.year, YEARS[0]), a.month
-    st.session_state.y1, st.session_state.m1 = d.year, d.month
-_s = pd.Timestamp(st.session_state.y0, st.session_state.m0, 1)
-_e = min(pd.Timestamp(st.session_state.y1, st.session_state.m1, 1) + pd.offsets.MonthEnd(0), d)
-if _e <= _s:
-    _e = d
-rng = (_s.date(), _e.date())
+# 自訂期間：起日、迄日分成兩個日期框，各點一次就好（不用在同一個月曆點兩次）
+D_MIN, D_MAX = df.index[0].date(), d.date()
+if "d0" not in st.session_state:
+    st.session_state.d0 = max((d - pd.DateOffset(years=1)).date(), D_MIN)
+    st.session_state.d1 = D_MAX
+_s, _e = st.session_state.d0, st.session_state.d1
+if not _s or not _e or _e <= _s:
+    _s, _e = max((d - pd.DateOffset(years=1)).date(), D_MIN), D_MAX
+rng = (_s, _e)
 z_now = zscore(close, yrs, today, log=is_log) if yrs else zscore(close, start=rng[0], end=rng[1], log=is_log)
 per_label = f"{yrs:g} 年" if yrs else f"{rng[0]:%Y/%m/%d}～{rng[1]:%Y/%m/%d} "
 
 rule = RULES.get(code)
 w_now = float(wr.iloc[-1])
-cyc_pill = None
+md = lambda t: f"{t.month}/{t.day}"
+last_day = d.normalize()
+
+# 大盤（防大跌用）與歷史重跑
+ix_s = index_closes(rule["idx"], today) if rule and rule.get("idx") else None
+ix = None
+if ix_s is not None and len(ix_s) >= 210:
+    _ma = ix_s.rolling(200).mean()
+    ix = {"close": float(ix_s.iloc[-1]), "ma": float(_ma.iloc[-1]), "date": ix_s.index[-1].normalize(),
+          "above": bool(ix_s.iloc[-1] > _ma.iloc[-1])}
+stale = ix is not None and is_tw(code) and ix["date"] < last_day      # 大盤資料比股價舊 → 先不判斷
+H = replay(close, wr, ix_s if not stale else None, vix_series(), rule, yrs or 0.5, is_tw(code)) if rule else None
+Hc = H if yrs else None          # 自訂期間：循環不推歷史（防大跌照樣推）
+
+cyc_pill, cyc_sub = None, ""
 if z_now is None:
     v_title, v_z, v_sub = "資料不足", "", ""
 else:
     v_z = f'<span class="z num {zcls(z_now)}">{sgn(z_now)}</span>'
     if rule and rule.get("sell_z") is not None:
-        if z_now >= rule["sell_z"]:
-            v_title, v_sub, cyc_pill = "賣點", f'<b class="hi">可以{rule["sell"]}</b>，剩下的繼續抱著。', ("賣點", "sell")
-        elif (rule["buy_z"] is not None and z_now <= rule["buy_z"]) or w_now <= rule["wr"]:
-            v_title, v_sub, cyc_pill = "買回區", '之前賣出的部分，<b class="lo">可以買回</b>；沒賣的，繼續抱著。', ("買回區", "buy")
+        in_sell = z_now >= rule["sell_z"]
+        in_buy = (rule["buy_z"] is not None and z_now <= rule["buy_z"]) or w_now <= rule["wr"]
+        sold = Hc and Hc["sold"]
+        if in_sell:
+            v_title, cyc_pill = "賣點", ("賣點", "sell")
+            if sold and Hc["s_date"] is not None and Hc["s_date"] < last_day:
+                v_sub = f'{md(Hc["s_date"])} 已建議{rule["sell"]}，剩下的繼續抱著。'
+            else:
+                v_sub = f'<b class="hi">可以{rule["sell"]}</b>，剩下的繼續抱著。'
+            cyc_sub = v_sub
+        elif in_buy:
+            v_title, cyc_pill = "買回區", ("買回區", "buy")
+            if Hc is None:
+                v_sub = '先前賣出的部分，<b class="lo">可以買回</b>；沒賣的，繼續抱著。'
+            elif sold and Hc["defend"]:
+                v_sub = '先前賣出的部分，大盤防守中，<b class="lo">建議先不買回</b>，請自行斟酌。'
+            elif Hc["b_date"] is not None and Hc["b_date"] == last_day:
+                v_sub = '先前賣出的部分，<b class="lo">可以買回</b>；沒賣的，繼續抱著。'
+            elif Hc["b_date"] is not None and (last_day - Hc["b_date"]).days <= 31:
+                v_sub = f'{md(Hc["b_date"])} 已建議買回，繼續抱著。'
+            else:
+                v_sub = "最近沒有賣出，不用買回，繼續抱著。"
+            cyc_sub = v_sub
         else:
-            v_title, v_sub, cyc_pill = "持有", "繼續抱著。", ("持有", "idle")
+            v_title, cyc_pill = "持有", ("持有", "idle")
+            if sold:
+                v_sub = f'{md(Hc["s_date"])} 已{rule["sell"]}，還沒到買回點，剩下的繼續抱著。'
+            else:
+                v_sub = "繼續抱著。"
+            cyc_sub = v_sub if sold else ""
     else:
         v_title, v_sub = "位階", ""
 
@@ -445,15 +617,15 @@ with opts:
     st.segmented_control("期間", list(PERIODS), key="per", label_visibility="collapsed")
     st.segmented_control("算法", ["一般", "對數"], key="alg", label_visibility="collapsed")
 if yrs is None:
-    for lab, ky, km in (("從", "y0", "m0"), ("到", "y1", "m1")):   # 「從」一排、「到」一排
-        try:
-            row = st.container(horizontal=True, gap="small", vertical_alignment="center")
-        except TypeError:
-            row = st.container()
-        with row:
+    try:                                              # 起日、迄日放同一排
+        row = st.container(horizontal=True, gap="xsmall", vertical_alignment="center")
+    except Exception:                                 # 舊版 Streamlit 不支援時，照一般排法
+        row = st.container()
+    with row:
+        for lab, ky in (("起日", "d0"), ("迄日", "d1")):
             st.markdown(f'<span class="cus-lab">{lab}</span>', unsafe_allow_html=True)
-            st.selectbox(f"{lab}年", YEARS, key=ky, format_func=lambda y: f"{y} 年", label_visibility="collapsed", width=120)
-            st.selectbox(f"{lab}月", MONTHS, key=km, format_func=lambda m: f"{m} 月", label_visibility="collapsed", width=96)
+            st.date_input(lab, key=ky, min_value=D_MIN, max_value=D_MAX, format="YYYY/MM/DD",
+                          label_visibility="collapsed", width=136)
 
 # --- 圖 ---
 keep = df.index >= df.index[-1] - pd.Timedelta(days=3653)
@@ -476,7 +648,7 @@ else:
 # --- 規則清單 ---
 rows = []
 if z_now is not None and rule and cyc_pill:
-    sub = {"賣點": f"可以{rule['sell']}", "買回區": "之前賣出的部分，可以買回", "持有": ""}[cyc_pill[0]]
+    sub = cyc_sub.replace("<b", "<span").replace("</b>", "</span>").rstrip("。")
     rows.append(rule_row("🔁 循環", f'目前 <span class="{zcls(z_now)}">{sgn(z_now)} SD</span>', cyc_pill[0], cyc_pill[1], sub))
 if np.isfinite(w_now):
     wp = ("超賣", "buy") if w_now <= -80 else ("超買", "sell") if w_now >= -20 else ("中間", "idle")
@@ -495,19 +667,27 @@ if np.isfinite(ub):
                              f"回到中線 {p2(ma)} 之前，都還算相對低檔<br>{edges}"))
     else:
         rows.append(rule_row("🌈 樂活", "在通道內", "通道內", "idle", f"已回到中線 {p2(ma)} 之上<br>{edges}"))
-if rule and rule.get("idx"):
-    ix = index_status(rule["idx"])
-    if ix:
+if rule and rule.get("idx") and ix:
+    nm = rule["idx_name"]
+    if stale:
+        rows.append(rule_row("🛡 防大跌", f"{nm}資料到 {md(ix['date'])}", "資料更新中", "idle",
+                             f"{nm}還沒更新到 {md(last_day)}，先不判斷"))
+    else:
         hi = float(close.iloc[-252:].max())
         dd = last / hi - 1
         gap = ix["close"] / ix["ma"] - 1
-        nm = rule["idx_name"]
         v = f"離高點 {'−' if dd < 0 else '+'}{abs(dd):.1%}，{nm}在 200 日線{'上' if gap >= 0 else '下'} {'+' if gap >= 0 else '−'}{abs(gap):.1%}"
-        if rule.get("dd") and dd <= -rule["dd"] and not ix["above"]:
+        recent_end = H and H["d_end"] is not None and len(close.loc[H["d_end"]:]) <= 5
+        if H and H["defend"] and H["d_start"] == last_day:
             rows.append(rule_row("🛡 防大跌", v, rule["defend"], "sell",
                                  f"{nm}跌破 200 日線，而且離高點跌超過 {rule['dd']:.0%}：可以{rule['defend']}"))
-        elif ix["reclaimed"]:
-            rows.append(rule_row("🛡 防大跌", v, "站回", "buy", f"{nm}剛站回 200 日線，之前防守賣出的，可以買回"))
+        elif H and H["defend"]:
+            rows.append(rule_row("🛡 防大跌", v, "防守中", "sell",
+                                 f"{md(H['d_start'])} 起防守中（已建議{rule['defend']}），等{nm}站回 200 日線 {p2(ix['ma'])} 再買回"))
+        elif recent_end:
+            why = f"{nm}站回 200 日線" if H["d_reason"] == "ma" else "VIX 破 40"
+            rows.append(rule_row("🛡 防大跌", v, "可買回", "buy",
+                                 f"{md(H['d_end'])} {why}，之前防守賣出的，可以買回"))
         elif not ix["above"]:
             rows.append(rule_row("🛡 防大跌", v, "不動作", "idle",
                                  f"{nm}已跌破 200 日線，但離高點還沒跌 {rule['dd']:.0%}，繼續抱著" if rule.get("dd")

@@ -120,7 +120,7 @@ function draw(){
   for(const t of ticks){s+=`<line x1="${X0}" x2="${X1}" y1="${f(y(t))}" y2="${f(y(t))}" stroke="#ECE7DF"/>`;
     if(!narrow)s+=`<text x="${AX}" y="${f(y(t)+FS*.35)}" font-size="${FS-1}" fill="#A79D90" text-anchor="end">${t}</text>`;}
   let lastX=-99;
-  for(const [i,m] of timeTicks(dates)){const xi=x(i);if(xi-lastX<FS*3)continue;lastX=xi;
+  for(const [i,m] of timeTicks(dates)){const xi=x(i);if(xi-lastX<FS*2.2)continue;lastX=xi;   /* 標籤太擠才略過（2 月有春節交易日少，跟 3 月很近） */
     s+=`<line x1="${f(xi)}" x2="${f(xi)}" y1="${Y0}" y2="${Y1}" stroke="#F1ECE4"/><text x="${f(xi)}" y="${VH-8}" font-size="${FS-1}" fill="#A79D90" text-anchor="${xi<X0+FS*1.6?'start':'middle'}">${m}</text>`;}
   s+=`<line x1="${X1}" x2="${X1}" y1="${Y0}" y2="${Y1}" stroke="#E3DCD1"/>`;
   const step=Math.max(1,Math.floor(n/700));
