@@ -626,6 +626,16 @@ else:
     else:
         v_title, v_sub = "位階", ""
 
+# 接近 +2 的低調提醒（只提醒，不改變建議）：到 +1.8 以上、還沒到賣點
+WARN = "接近 +2，漲多了，留意。"
+_sell_z = rule["sell_z"] if rule and rule.get("sell_z") is not None else 2.5
+if z_now is not None and 1.8 <= z_now < _sell_z:
+    if cyc_pill and cyc_pill[0] == "持有":
+        v_sub = (v_sub.rstrip("。") + "；" if v_sub and v_sub != "繼續抱著。" else "繼續抱著；") + WARN
+        cyc_sub = (cyc_sub.rstrip("。") + "；" if cyc_sub else "") + WARN
+    elif not cyc_pill:
+        v_sub = WARN
+
 # 最上面的建議要把防大跌一起考慮：防守剛解除（5 個交易日內）就提醒買回防守賣出的部分
 recent_end = bool(H and not H["defend"] and H["d_end"] is not None and len(close.loc[H["d_end"]:]) <= 5 and not stale)
 # 防守中或剛解除時，多一行防大跌的建議；循環那行前面標「循環：」，兩個分開講
