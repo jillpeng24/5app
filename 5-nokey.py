@@ -615,7 +615,7 @@ else:
             elif Hc["b_date"] is not None and (last_day - Hc["b_date"]).days <= 31:
                 v_sub = f'{md(Hc["b_date"])} 已建議買回，繼續抱著。'
             else:
-                v_sub = "循環最近沒有賣出，不用買回，繼續抱著。"
+                v_sub = "最近沒有賣出，不用買回，繼續抱著。"
             cyc_sub = v_sub
         else:
             v_title, cyc_pill = "持有", ("持有", "idle")
@@ -629,11 +629,18 @@ else:
 
 # 最上面的建議要把防大跌一起考慮：防守剛解除（5 個交易日內）就提醒買回防守賣出的部分
 recent_end = bool(H and not H["defend"] and H["d_end"] is not None and len(close.loc[H["d_end"]:]) <= 5 and not stale)
-if recent_end and z_now is not None and v_title != "賣點":
+# 防守中或剛解除時，多一行防大跌的建議；循環那行前面標「循環：」，兩個分開講
+def_line = ""
+if H and H["defend"] and not stale and rule.get("dd"):
+    def_line = (f'防大跌：{md(H["d_start"])} 起防守中（已建議{rule["defend"]}），'
+                f'等{rule["idx_name"]}站回 200 日線再買回。')
+elif recent_end:
     why = f'{rule["idx_name"]}站回 200 日線' if H["d_reason"] == "ma" else "VIX 破 40"
-    v_sub = f'{md(H["d_end"])} {why}，先前防守賣出的部分，<b class="lo">可以買回</b>。'
-    if Hc and Hc["b_date"] is not None and Hc["b_date"] >= H["d_end"]:     # 循環也在這段期間買回
-        v_sub = f'{md(H["d_end"])} {why}，先前賣出的部分（防守和循環），<b class="lo">都可以買回</b>。'
+    def_line = f'防大跌：{md(H["d_end"])} {why}，先前防守賣出的部分，<b class="lo">可以買回</b>。'
+if def_line and v_sub:
+    v_sub = f"循環：{v_sub}</p><p>{def_line}"
+elif def_line:
+    v_sub = def_line
 
 others = {y: zscore(close, y, today, log=is_log) for y in (0.5, 1, 3.5, 10) if y != yrs}
 cyc_html = "".join(
